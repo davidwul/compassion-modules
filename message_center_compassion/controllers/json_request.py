@@ -1,35 +1,41 @@
-# -*- encoding: utf-8 -*-
 ##############################################################################
 #
 #    Copyright (C) 2015 Compassion CH (http://www.compassion.ch)
 #    Releasing children from poverty in Jesus' name
 #    @author: Yannick Vaucher, Emanuel Cino <ecino@compassion.ch>
 #
-#    The licence is in the file __openerp__.py
+#    The licence is in the file __manifest__.py
 #
 ##############################################################################
-import simplejson
-import werkzeug
+import json
 import logging
 import uuid
 from datetime import datetime
 
-from ..tools.onramp_logging import ONRAMP_LOGGER
-from openerp import exceptions
-from openerp.http import (
-    Response, JsonRequest, Root, SessionExpiredException,
-    AuthenticationError, serialize_exception
+import werkzeug
+
+from odoo import exceptions
+from odoo.http import (
+    Response,
+    JsonRequest,
+    Root,
+    SessionExpiredException,
+    AuthenticationError,
 )
+from odoo.tools import config, date_utils
 
 _logger = logging.getLogger(__name__)
 
 # Monkeypatch type of request rooter to use RESTJsonRequest
 old_get_request = Root.get_request
 
+TEST_MODE = config.get("test_enable")
+
 
 def get_request(self, httprequest):
-    if (httprequest.mimetype == "application/json" and
-            httprequest.environ['PATH_INFO'].startswith('/onramp')):
+    if httprequest.mimetype == "application/json" and httprequest.environ[
+        "PATH_INFO"
+    ].startswith("/onramp"):
         return RESTJsonRequest(httprequest)
     return old_get_request(self, httprequest)
 
@@ -66,11 +72,11 @@ Sample Unsuccessful Response
     "RelatedRecordId":""
 }
 """
+
     def __init__(self, *args):
         """ Setup a GUID for any message and keep track of timestamp. """
         self.uuid = str(uuid.uuid4())
-        self.timestamp = datetime.strftime(
-            datetime.now(), '%Y-%m-%dT%H:%M:%S')
+        self.timestamp = datetime.strftime(datetime.now(), "%Y-%m-%dT%H:%M:%S")
         try:
             super(RESTJsonRequest, self).__init__(*args)
         except:
@@ -82,100 +88,118 @@ Sample Unsuccessful Response
 
     def dispatch(self):
         """ Log the received message before processing it. """
-        ONRAMP_LOGGER.info(
+        _logger.debug(
             "[%s] %s %s %s",
-            self.httprequest.environ['REQUEST_METHOD'],
+            self.httprequest.environ["REQUEST_METHOD"],
             self.httprequest.url,
-            [(k, v) for k, v in self.httprequest.headers.iteritems()],
+            [(k, v) for k, v in self.httprequest.headers.items()],
             self.jsonrequest,
         )
-        return super(RESTJsonRequest, self).dispatch()
+        return super().dispatch()
 
     def _json_response(self, result=None, error=None):
         """ Format the answer and add required headers. """
         response = {}
         status = 200
         if error is not None:
-            status = error.get('ErrorCode')
+            status = error.get("ErrorCode")
             response = error
         if result is not None:
-            status = result.pop('code')
+            status = result.pop("code", 200)
             response = result
 
-        mime = 'application/json'
-        body = simplejson.dumps(response)
+        mime = "application/json"
+        body = json.dumps(response, default=date_utils.json_default)
         headers = [
-            ('Content-Type', mime),
-            ('Content-Length', len(body)),
-            ('x-cim-RequestId', self.uuid),
+            ("Content-Type", mime),
+            ("Content-Length", len(body)),
+            ("x-cim-RequestId", self.uuid),
         ]
 
-        http_response = Response(
-            body, headers=headers, status=status)
-        ONRAMP_LOGGER.info('[SEND] %s %s "%s"', status, headers, response)
+        http_response = Response(body, headers=headers, status=status)
+        _logger.debug('[SEND] %s %s "%s"', status, headers, response)
         return http_response
 
     def _handle_exception(self, exception):
         """Format the errors to conform to GMC error types."""
         error = {
-            'ErrorId': self.uuid,
-            'ErrorTimestamp': self.timestamp,
-            'ErrorClass': 'BusinessException',
-            'ErrorRetryable': False,
-            'ErrorModule': 'REST OnRamp',
-            'ErrorSubModule': 'Rest OnRamp Authorization',
-            'ErrorMethod': 'ValidateToken',
-            'ErrorLoggedInUser': '',
-            'RelatedRecordId': ''
+            "ErrorId": self.uuid,
+            "ErrorTimestamp": self.timestamp,
+            "ErrorClass": "BusinessException",
+            "ErrorRetryable": False,
+            "ErrorModule": "REST OnRamp",
+            "ErrorSubModule": "Rest OnRamp Authorization",
+            "ErrorMethod": "ValidateToken",
+            "ErrorLoggedInUser": "",
+            "RelatedRecordId": "",
         }
-        try:
-            super(JsonRequest, self)._handle_exception(exception)
-        except werkzeug.exceptions.HTTPException:
+        if isinstance(exception, werkzeug.exceptions.HTTPException):
             # General exception, send back the exception message
-            error.update({
-                'ErrorCode': exception.code,
-                'ErrorCategory': 'CommunicationError',
-                'ErrorMessage': exception.message,
-                'description': exception.description,
-            })
-        except exceptions.AccessDenied:
+            error.update(
+                {
+                    "ErrorCode": exception.code,
+                    "ErrorCategory": "CommunicationError",
+                    "ErrorMessage": exception.description,
+                }
+            )
+            if not TEST_MODE:
+                _logger.error(exception.description, exc_info=True)
+        elif isinstance(exception, exceptions.AccessDenied):
             # Access error
-            error.update({
-                'ErrorCode': 401,
-                'ErrorCategory': 'AuthorizationError',
-                'ErrorMessage': '401 Unauthorized',
-            })
-        except AttributeError:
+            error.update(
+                {
+                    "ErrorCode": 401,
+                    "ErrorCategory": "AuthorizationError",
+                    "ErrorMessage": "401 Unauthorized",
+                }
+            )
+            if not TEST_MODE:
+                _logger.error("401 Unauthorized", exc_info=True)
+        elif isinstance(exception, AttributeError):
             # Raised if JSON could not be parsed or invalid body was received
-            error.update({
-                'ErrorCode': 400,
-                'ErrorSubModule': 'Rest OnRamp Message Validation',
-                'ErrorMethod': 'Message Validation',
-                'ErrorCategory': 'InputValidationError',
-                'ErrorMessage': exception.message,
-            })
-        except AuthenticationError:
-                error.update({
-                    'ErrorCode': 401,
-                    'ErrorCategory': 'AuthenticationError',
-                    'ErrorMessage': 'Session Invalid',
-                })
-        except SessionExpiredException:
-                error.update({
-                    'ErrorCode': 401,
-                    'ErrorCategory': 'AuthenticationError',
-                    'ErrorMessage': 'Session Expired',
-                })
-        except Exception:
+            error.update(
+                {
+                    "ErrorCode": 400,
+                    "ErrorSubModule": "Rest OnRamp Message Validation",
+                    "ErrorMethod": "Message Validation",
+                    "ErrorCategory": "InputValidationError",
+                    "ErrorMessage": exception.message,
+                }
+            )
+            if not TEST_MODE:
+                _logger.error(exception.message, exc_info=True)
+        elif isinstance(exception, AuthenticationError):
+            error.update(
+                {
+                    "ErrorCode": 401,
+                    "ErrorCategory": "AuthenticationError",
+                    "ErrorMessage": "Session Invalid",
+                }
+            )
+            if not TEST_MODE:
+                _logger.error("Session Invalid", exc_info=True)
+        elif isinstance(exception, SessionExpiredException):
+            error.update(
+                {
+                    "ErrorCode": 401,
+                    "ErrorCategory": "AuthenticationError",
+                    "ErrorMessage": "Session Expired",
+                }
+            )
+            if not TEST_MODE:
+                _logger.error("Session Expired", exc_info=True)
+        else:
             # Any other cases, lookup what exception type was raised.
-            if not isinstance(exception, (exceptions.Warning)):
-                _logger.exception("Exception during JSON request handling.")
-            error.update({
-                'ErrorCode': 500,
-                'ErrorCategory': 'ApplicationError',
-                'ErrorMessage': 'Odoo Server Error',
-            })
-
-        finally:
-            ONRAMP_LOGGER.error(serialize_exception(exception))
-            return self._json_response(error=error)
+            if not isinstance(exception, (exceptions.UserError)):
+                if not TEST_MODE:
+                    _logger.error(
+                        "Exception during JSON request handling.", exc_info=True
+                    )
+            error.update(
+                {
+                    "ErrorCode": 500,
+                    "ErrorCategory": "ApplicationError",
+                    "ErrorMessage": "Odoo Server Error",
+                }
+            )
+        return self._json_response(error=error)

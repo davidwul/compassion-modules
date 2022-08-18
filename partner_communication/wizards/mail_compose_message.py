@@ -1,35 +1,39 @@
-# -*- encoding: utf-8 -*-
 ##############################################################################
 #
 #    Copyright (C) 2016 Compassion CH (http://www.compassion.ch)
 #    Releasing children from poverty in Jesus' name
 #    @author: Emanuel Cino <ecino@compassion.ch>
 #
-#    The licence is in the file __openerp__.py
+#    The licence is in the file __manifest__.py
 #
 ##############################################################################
 
-from openerp import models, api
+from odoo import models, api, fields
 
 
 class EmailComposeMessage(models.TransientModel):
-    _inherit = 'mail.compose.message'
+    _inherit = "mail.compose.message"
+
+    body = fields.Html(sanitize=False)
 
     @api.model
     def create_emails(self, template, res_ids, default_mail_values=None):
         """ Helper to generate a new e-mail given a template and objects.
 
-        :param int template: email.template record
+        :param int template: mail.template record
         :param res_ids: ids of the resource objects
         :return: browse records of created e-mails (one per resource object)
         """
         all_mail_values = self._get_mail_values(template, res_ids)
-        email_obj = self.env['mail.mail']
+        email_obj = self.env["mail.mail"]
         emails = email_obj
         for res_id in res_ids:
             mail_values = all_mail_values[res_id]
             if default_mail_values:
                 mail_values.update(default_mail_values)
+
+            if mail_values.get("body_html"):
+                mail_values["body"] = mail_values["body_html"]
             emails += email_obj.create(mail_values)
         return emails
 
@@ -37,7 +41,7 @@ class EmailComposeMessage(models.TransientModel):
     def get_generated_fields(self, template, res_ids):
         """ Helper to retrieve generated html given a template and objects.
 
-        :param int template: email.template record
+        :param int template: mail.template record
         :param res_ids: ids of the resource objects
         :return: html code generated for the e-mail (list if len(res_ids)>1)
         """
@@ -52,47 +56,26 @@ class EmailComposeMessage(models.TransientModel):
     def _get_mail_values(self, template, res_ids):
         """ Helper to get e-mail values given a template and objects.
 
-        :param int template: email.template record
+        :param int template: mail.template record
         :param res_ids: ids of the resource objects
         :return: list of dictionaries containing e-mail values
         """
         if not isinstance(res_ids, list):
             res_ids = [res_ids]
-        wizard = self.sudo().with_context(active_ids=res_ids).create({
-            'template_id': template.id,
-            'composition_mode': 'mass_mail',
-            'model': template.model,
-            'author_id': self.env.user.partner_id.id,
-            'notification': True,
-            'auto_delete': True,
-        })
+        wizard = (
+            self.sudo()
+                .with_context(active_ids=res_ids)
+                .create(
+                {
+                    "template_id": template.id,
+                    "composition_mode": "mass_mail",
+                    "model": template.model,
+                    "author_id": self.env.user.partner_id.id,
+                }
+            )
+        )
         # Fetch template values.
         wizard.write(
-            wizard.onchange_template_id(
-                template.id, 'mass_mail', False, False)['value'])
-        return self.get_mail_values(wizard, res_ids)
-
-    @api.multi
-    def send_mail(self):
-        """ Return to e-mails generated. """
-        # Fix bug in v8 Core : update default value of attachment in context
-        # otherwise it doesn't set attachments properly
-        context = self.env.context.copy()
-        context['default_attachment_ids'] = [(4, _id) for _id in
-                                             self.attachment_ids.ids]
-        super(EmailComposeMessage, self.with_context(context)).send_mail()
-        mail_ids = self.env['mail.mail'].search([
-            ('res_id', 'in', self.env.context.get('active_ids', [])),
-            ('model', '=', self.env.context.get('active_model'))
-        ])
-        if mail_ids:
-            return {
-                'name': 'E-mails',
-                'view_mode': 'form,tree',
-                'view_type': 'form',
-                'domain': [('id', 'in', mail_ids.ids)],
-                'res_model': 'mail.mail',
-                'res_id': mail_ids.ids[0],
-                'type': 'ir.actions.act_window',
-            }
-        return True
+            wizard.onchange_template_id(template.id, "mass_mail", False, False)["value"]
+        )
+        return wizard.get_mail_values(res_ids)

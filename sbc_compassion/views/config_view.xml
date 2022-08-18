@@ -1,92 +1,61 @@
 <?xml version="1.0" encoding="utf-8"?>
-<openerp>
-    <data>
-        <!-- Form Definition -->
-        <record id="import_letters_config_form" model="ir.ui.view">
-            <field name="name">import.letter.config.form</field>
-            <field name="model">import.letter.config</field>
-            <field name="arch" type="xml">
-                <form>
-                    <group>
-                        <group>
-                            <field name="name"/>
-                            <field name="template_id"/>
-                            <field name="mandatory_review"/>
-                            <field name="is_encourager"/>
-                        </group>
-                        <group>
-                            <field name="physical_attachments"/>
-                            <field name="attachments_description"/>
-                            <field name="source"/>
-                        </group>
-                    </group>
-                </form>
-            </field>
-        </record>
-
-        <record id="child_layout_config_form" model="ir.ui.view">
-            <field name="name">correspondence.b2s.layout.form</field>
-            <field name="model">correspondence.b2s.layout</field>
-            <field name="arch" type="xml">
-                <form>
+<odoo>
+    <!-- Form Definition -->
+    <record id="import_letters_config_form" model="ir.ui.view">
+        <field name="name">import.letter.config.form</field>
+        <field name="model">import.letter.config</field>
+        <field name="arch" type="xml">
+            <form>
+                <group>
                     <group>
                         <field name="name"/>
-                        <field name="code"/>
-                        <field name="page_1_box_ids"/>
-                        <field name="page_2_box_ids"/>
-                        <field name="additional_page_box_id"/>
+                        <field name="template_id"/>
                     </group>
-                </form>
-            </field>
-        </record>
+                    <group>
+                        <field name="physical_attachments"/>
+                        <field name="attachments_description"/>
+                        <field name="source"/>
+                    </group>
+                </group>
+            </form>
+        </field>
+    </record>
 
-        <!-- Tree definition -->
-        <record id="child_layout_config_tree" model="ir.ui.view">
-            <field name="name">correspondence.b2s.layout.tree</field>
-            <field name="model">correspondence.b2s.layout</field>
-            <field name="arch" type="xml">
-                <tree>
-                    <field name="name"/>
-                    <field name="code"/>
-                </tree>
-            </field>
-        </record>
+    <record id="view_sbc_settings_form" model="ir.ui.view">
+        <field name="name">sbc.settings.form</field>
+        <field name="model">res.config.settings</field>
+        <field name="inherit_id" ref="message_center_compassion.compassion_settings"/>
+        <field name="arch" type="xml">
+            <xpath expr="//div[@name='compassion_settings']" position='inside'>
+                <h2>Letter check responsible</h2>
+                <div class="row mt16 o_settings_container">
+                    <div class="col-md-12 o_setting_box">
+                        <div class="o_setting_right_pane">
+                            <div class="row mt16">
+                                <label class="col-md-6 o_light_label"
+                                       for="letter_responsible"/>
+                                <field class="col-md-6"
+                                       name="letter_responsible"/>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </xpath>
+        </field>
+    </record>
 
-        <record id="translation_box_config_tree" model="ir.ui.view">
-            <field name="name">correspondence.translation.box.tree</field>
-            <field name="model">correspondence.translation.box</field>
-            <field name="arch" type="xml">
-                <tree>
-                    <field name="left"/>
-                    <field name="top"/>
-                    <field name="width"/>
-                    <field name="nb_lines"/>
-                </tree>
-            </field>
-        </record>
+    <!-- Action Definition -->
+    <record id="import_letter_config_action" model="ir.actions.act_window">
+        <field name="name">Letter Import Config</field>
+        <field name="res_model">import.letter.config</field>
+        <field name="type">ir.actions.act_window</field>
+        <field name="view_type">form</field>
+        <field name="view_mode">tree,form</field>
+    </record>
 
-        <!-- Action Definition -->
-        <record id="import_letter_config_action" model="ir.actions.act_window">
-            <field name="name">Letter Import Config</field>
-            <field name="res_model">import.letter.config</field>
-            <field name="type">ir.actions.act_window</field>
-            <field name="view_type">form</field>
-            <field name="view_mode">tree,form</field>
-        </record>
-
-        <record id="child_layouts_config_action" model="ir.actions.act_window">
-            <field name="name">Child Layouts</field>
-            <field name="res_model">correspondence.b2s.layout</field>
-            <field name="type">ir.actions.act_window</field>
-            <field name="view_type">form</field>
-            <field name="view_mode">tree,form</field>
-        </record>
-
-        <!-- Menu Definition -->
-        <menuitem id="correspondence_config" name="Correspondence" parent="child_compassion.menu_configuration" sequence="3"/>
-        <menuitem id="import_letter_config_menu" parent="correspondence_config"
-                  name="Letter Import" action="import_letter_config_action" sequence="3"/>
-        <menuitem id="child_layout_config_menu" parent="correspondence_config"
-                  name="Child Layouts" action="child_layouts_config_action" sequence="2"/>
-    </data>
-</openerp>
+    <!-- Menu Definition -->
+    <menuitem id="correspondence_config" name="Correspondence"
+              parent="child_compassion.menu_configuration" sequence="4"/>
+    <menuitem id="import_letter_config_menu" parent="correspondence_config"
+              name="Letter Import" action="import_letter_config_action" sequence="3"/>
+</odoo>

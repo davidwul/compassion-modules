@@ -1,15 +1,10 @@
-# -*- encoding: utf-8 -*-
-##############################################################################
-#
-#    Copyright (C) 2014 Compassion CH (http://www.compassion.ch)
-#    Releasing children from poverty in Jesus' name
-#    @author: Emanuel Cino <ecino@compassion.ch>
-#
-#    The licence is in the file __openerp__.py
-#
-##############################################################################
-
 from . import models
 from . import tools
-from . import mappings
 from . import controllers
+from . import wizards
+
+
+def load_mappings(cr, registry):
+    path = "message_center_compassion/static/mappings/"
+    files = ["advanced_query_mapping.json"]
+    tools.load_mappings.load_mapping_files(cr, path, files)

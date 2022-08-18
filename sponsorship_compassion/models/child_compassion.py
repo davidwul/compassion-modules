@@ -1,28 +1,30 @@
-# -*- encoding: utf-8 -*-
 ##############################################################################
 #
 #    Copyright (C) 2014-2015 Compassion CH (http://www.compassion.ch)
 #    Releasing children from poverty in Jesus' name
 #    @author: Emanuel Cino <ecino@compassion.ch>
 #
-#    The licence is in the file __openerp__.py
+#    The licence is in the file __manifest__.py
 #
 ##############################################################################
 
-from openerp import api, models, fields
-
 import logging
+
+from odoo import api, models, fields
 
 logger = logging.getLogger(__name__)
 
 
 class ChildCompassion(models.Model):
-    _inherit = 'compassion.child'
+    _inherit = "compassion.child"
 
     sponsorship_ids = fields.One2many(
-        'recurring.contract', compute='_set_related_contracts',
-        string="Sponsorships", readonly=True)
-    has_been_sponsored = fields.Boolean(compute='_compute_has_been_sponsored')
+        "recurring.contract",
+        compute="_compute_related_contracts",
+        string="Sponsorships",
+        readonly=True,
+    )
+    has_been_sponsored = fields.Boolean(compute="_compute_has_been_sponsored")
 
     @api.multi
     def _compute_has_been_sponsored(self):
@@ -30,37 +32,34 @@ class ChildCompassion(models.Model):
             child.has_been_sponsored = child.sponsorship_ids
 
     @api.multi
-    def _set_related_contracts(self):
-        con_obj = self.env['recurring.contract']
+    def _compute_related_contracts(self):
+        con_obj = self.env["recurring.contract"]
         for child in self:
-            child.sponsorship_ids = con_obj.search([
-                ('child_id', '=', child.id),
-                ('type', '=', 'S')])
-
-    def depart(self):
-        """ End the sponsorship. """
-        for child in self.filtered('sponsor_id'):
-            sponsorship = child.sponsorship_ids[0]
-            sponsorship.with_context(default_type='S').write({
-                'end_reason': '1',  # Child departure
-                'end_date': fields.Date.today(),
-            })
-            sponsorship.signal_workflow('contract_terminated')
-        super(ChildCompassion, self).depart()
+            child.sponsorship_ids = con_obj.search(
+                [("child_id", "=", child.id), ("type", "like", "S")]
+            )
 
     @api.multi
-    def child_released(self):
+    def child_released(self, state="R"):
         """
         Cancel waiting sponsorships when child is released:
         the sponsor never paid and hold is expired.
         :return: True
         """
-        res = super(ChildCompassion, self).child_released()
-        waiting_sponsorships = self.mapped('sponsorship_ids').filtered(
-            lambda s: s.state in ('draft', 'waiting', 'waiting_payment'))
-        waiting_sponsorships.with_context(default_type='S').write({
-            'end_reason': '9',  # Never Paid
-            'end_date': fields.Date.today(),
-        })
-        waiting_sponsorships.signal_workflow('contract_terminated')
-        return res
+        if state == "F":
+            # Departure
+            depart = self.env.ref("sponsorship_compassion.end_reason_depart")
+            sponsorships = self.mapped("sponsorship_ids").filtered(
+                lambda c: c.state not in ("terminated", "cancelled"))
+            sponsorships.write({"end_reason_id": depart.id})
+            sponsorships.contract_terminated()
+        else:
+            # Hold expiration
+            hold_released = self.env.ref("sponsorship_compassion.end_reason_release")
+            waiting_sponsorships = self.mapped("sponsorship_ids").filtered(
+                lambda s: s.state in ("draft", "waiting", "waiting_payment")
+            )
+            if waiting_sponsorships:
+                waiting_sponsorships.end_reason_id = hold_released
+                waiting_sponsorships.contract_terminated()
+        return super().child_released(state)

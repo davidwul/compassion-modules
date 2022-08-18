@@ -18,7 +18,9 @@
                             </h1>
                         </div>
                         <div class="oe_right oe_button_box" name="buttons">
-                            <button name="view_children" string="Impacted children" type="object" icon="fa-child" class="oe_stat_button"/>
+                            <button name="view_children" type="object" icon="fa-child" class="oe_stat_button oe_inline">
+                                <field name="number_impacted_children" widget="statinfo" string="Impacted children"/>
+                            </button>
                             <button name="view_icp" string="Impacted projects" type="object" icon="fa-home" class="oe_stat_button"/>
                         </div>
                         <group>
@@ -62,6 +64,7 @@
                                         </field>
                                         <field name="fo_disaster_update_ids">
                                             <tree>
+                                                <field name="create_date"/>
                                                 <field name="name"/>
                                                 <field name="summary"/>
                                             </tree>
@@ -76,29 +79,34 @@
                             <page string="Impact">
                                 <group>
                                     <group colspan="2">
-                                        <field name="icp_disaster_impact_ids">
+                                        <field name="fcp_disaster_impact_ids">
                                             <tree>
-                                                <field name="impact_on_icp_program"/>
-                                                <field name="state"/>
+                                                <field name="project_fcp_id"/>
+                                                <field name="impact_on_fcp_program"/>
                                                 <field name="infrastructure"/>
+                                                <field name="state"/>
+                                                <field name="field_office_impact_status"/>
                                             </tree>
                                         </field>
                                         <field name="child_disaster_impact_ids">
                                             <tree>
+                                                <field name="child_global_id"/>
                                                 <field name="name"/>
                                                 <field name="beneficiary_location"/>
                                                 <field name="beneficiary_physical_condition"/>
+                                                <field name="house_condition"/>
                                                 <field name="state"/>
+                                                <field name="disaster_status"/>
                                             </tree>
                                         </field>
                                     </group>
                                     <group>
                                         <field name="impact_description"/>
-                                        <field name="impact_on_icp_infrastructure_damaged"/>
-                                        <field name="impact_on_icp_infrastructure_destroyed"/>
+                                        <field name="impact_on_fcp_infrastructure_damaged"/>
+                                        <field name="impact_on_fcp_infrastructure_destroyed"/>
                                     </group>
                                     <group>
-                                        <field name="impact_on_icp_program_temporarily_closed"/>
+                                        <field name="impact_on_fcp_program_temporarily_closed"/>
                                         <field name="impact_to_field_office_operations"/>
                                     </group>
                                 </group>
@@ -112,7 +120,7 @@
                                         <field name="reported_number_beneficiaries_impacted"/>
                                     </group>
                                     <group>
-                                        <field name="reported_number_of_icps_impacted"/>
+                                        <field name="reported_number_of_fcps_impacted"/>
                                         <field name="reported_serious_injuries_beneficiaries"/>
                                         <field name="reported_serious_injuries_caregivers"/>
                                         <field name="reported_serious_injuries_siblings"/>
@@ -132,6 +140,75 @@
                         <field name="message_ids" widget="mail_thread"/>
                     </div>
                 </form>
+            </field>
+        </record>
+
+        <record id="view_field_office_disaster_tree" model="ir.ui.view">
+            <field name="name">fo.disaster.alert.tree</field>
+            <field name="model">fo.disaster.alert</field>
+            <field name="arch" type="xml">
+                <tree>
+                    <field name="name"/>
+                    <field name="disaster_type"/>
+                    <field name="disaster_date"/>
+                    <field name="field_office_id"/>
+                    <field name="number_impacted_children"/>
+                    <field name="state"/>
+                </tree>
+            </field>
+        </record>
+
+        <record id="view_child_disaster_impact_form" model="ir.ui.view">
+            <field name="name">child.disaster.impact.form</field>
+            <field name="model">child.disaster.impact</field>
+            <field name="arch" type="xml">
+                <form>
+                    <header>
+                        <field name="state" widget="statusbar"/>
+                    </header>
+                    <sheet>
+                        <group>
+                            <group>
+                                <field name="disaster_id"/>
+                                <field name="child_id"/>
+                                <field name="child_global_id"/>
+                                <field name="name"/>
+                                <field name="disaster_status"/>
+                            </group>
+                            <group>
+                                <field name="beneficiary_location"/>
+                                <field name="beneficiary_physical_condition"/>
+                                <field name="beneficiary_physical_condition_description"/>
+                            </group>
+                            <group>
+                                <field name="caregivers_died_number"/>
+                                <field name="caregivers_seriously_injured_number"/>
+                                <field name="siblings_died_number"/>
+                                <field name="siblings_seriously_injured_number"/>
+                            </group>
+                            <group>
+                                <field name="house_condition"/>
+                                <field name="loss_ids" widget="many2many_tags"/>
+                            </group>
+                        </group>
+                    </sheet>
+                </form>
+            </field>
+        </record>
+
+        <record id="view_child_disaster_impact_tree" model="ir.ui.view">
+            <field name="name">child.disaster.impact.tree</field>
+            <field name="model">child.disaster.impact</field>
+            <field name="arch" type="xml">
+                <tree>
+                    <field name="create_date"/>
+                    <field name="child_global_id"/>
+                    <field name="beneficiary_location"/>
+                    <field name="beneficiary_physical_condition"/>
+                    <field name="house_condition"/>
+                    <field name="state"/>
+                    <field name="disaster_status"/>
+                </tree>
             </field>
         </record>
 

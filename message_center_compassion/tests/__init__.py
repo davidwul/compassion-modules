@@ -1,13 +1,3 @@
-# -*- encoding: utf-8 -*-
-##############################################################################
-#
-#    Copyright (C) 2014 Compassion CH (http://www.compassion.ch)
-#    Releasing children from poverty in Jesus' name
-#    @author: Emanuel Cino <ecino@compassion.ch>
-#
-#    The licence is in the file __openerp__.py
-#
-##############################################################################
-
-# from . import test_messages
-from . import base_test_onramp
+from . import onramp_base_test
+from . import test_onramp_controller
+from . import test_mapping

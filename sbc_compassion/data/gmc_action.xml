@@ -1,10 +1,10 @@
-<openerp>
-    <data>
+<odoo>
+    <data noupdate="1">
         <!-- Letter Messages -->
         <record id="update_letter" model="gmc.action">
             <field name="name">UpdateLetter</field>
             <field name="direction">in</field>
-            <field name="model">correspondence</field>
+            <field name="mapping_id" ref="correspondence_mapping"/>
             <field name="description">This will update a Sponsorship Correspondence object.</field>
             <field name="auto_process">1</field>
         </record>
@@ -12,7 +12,7 @@
         <record id="create_letter" model="gmc.action">
             <field name="name">CreateLetter</field>
             <field name="direction">out</field>
-            <field name="model">correspondence</field>
+            <field name="mapping_id" ref="correspondence_mapping"/>
             <field name="description">This will send a new Sponsorship Correspondence to GMC.</field>
             <field name="connect_service">communications</field>
             <field name="connect_answer_wrapper">Responses</field>
@@ -30,4 +30,4 @@
             <field name="action_id" ref="update_letter"/>
         </record>
     </data>
-</openerp>
+</odoo>

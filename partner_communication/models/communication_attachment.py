@@ -1,38 +1,47 @@
-# -*- encoding: utf-8 -*-
 ##############################################################################
 #
 #    Copyright (C) 2016 Compassion CH (http://www.compassion.ch)
 #    Releasing children from poverty in Jesus' name
 #    @author: Emanuel Cino <ecino@compassion.ch>
 #
-#    The licence is in the file __openerp__.py
+#    The licence is in the file __manifest__.py
 #
 ##############################################################################
 import base64
-
-from openerp import api, models, fields
 import logging
 
+from odoo import api, models, fields
 
 logger = logging.getLogger(__name__)
 
 
 class CommunicationAttachment(models.Model):
-    _name = 'partner.communication.attachment'
-    _description = 'Communication Attachment'
+    _name = "partner.communication.attachment"
+    _description = "Communication Attachment"
 
     ##########################################################################
     #                                 FIELDS                                 #
     ##########################################################################
     name = fields.Char(required=True)
     communication_id = fields.Many2one(
-        'partner.communication.job', 'Communication', required=True,
-        ondelete='cascade')
+        "partner.communication.job",
+        "Communication",
+        required=True,
+        ondelete="cascade",
+        readonly=False,
+    )
+    report_id = fields.Many2one(
+        "ir.actions.report",
+        string="ID of report used by the attachment",
+        readonly=False,
+    )
     report_name = fields.Char(
-        required=True, help='Identifier of the report used to print')
+        required=True, help="Identifier of the report used to print"
+    )
     attachment_id = fields.Many2one(
-        'ir.attachment', string="Attachments", required=True)
-    data = fields.Binary(compute='_compute_data')
+        "ir.attachment", string="Attachments", required=True, readonly=False, ondelete="cascade"
+    )
+    data = fields.Binary(compute="_compute_data")
 
     def _compute_data(self):
         for attachment in self:
@@ -45,28 +54,70 @@ class CommunicationAttachment(models.Model):
         :param vals: vals for creation
         :return: record created
         """
-        if 'data' in vals and 'attachment_id' not in vals:
-            name = vals['name']
-            attachment = self.env['ir.attachment'].create({
-                'datas_fname': name,
-                'res_model': self._name,
-                'datas': vals['data'],
-                'name': name
-            })
-            vals['attachment_id'] = attachment.id
 
-        res = super(CommunicationAttachment, self).create(vals)
-        res.attachment_id.res_id = res.id
+        if not vals.get("report_id"):
+            vals["report_id"] = (
+                self.env["ir.actions.report"]
+                    ._get_report_from_name(vals.get("report_name"))
+                    .id
+            )
+
+        new_record = "data" in vals and "attachment_id" not in vals
+        if new_record:
+            name = vals["name"]
+            attachment = self.env["ir.attachment"].create(
+                {
+                    "datas_fname": name,
+                    "res_model": "partner.communication.job",
+                    "datas": vals["data"],
+                    "name": name,
+                    "report_id": vals["report_id"],
+                }
+            )
+            vals["attachment_id"] = attachment.id
+
+        res = super().create(vals)
+        if new_record:
+            res.attachment_id.res_id = res.communication_id.id
         return res
 
     @api.multi
-    def print_attachments(self):
-        report_obj = self.env['report']
+    def unlink(self):
+        self.mapped("attachment_id").unlink()
+        return super().unlink()
+
+    @api.multi
+    def print_attachments(self, output_tray=None):
+        total_attachment_with_omr = len(self.filtered("attachment_id.enable_omr"))
+        count_attachment_with_omr = 1
         for attachment in self:
-            report = report_obj._get_report_from_name(attachment.report_name)
-            behaviour = report.behaviour()[report.id]
-            printer = behaviour['printer']
-            if printer:
-                printer.print_document(
-                    report, attachment.data, report.report_type)
+            # add omr to pdf if needed
+            if (
+                    attachment.communication_id.omr_enable_marks
+                    and attachment.attachment_id.enable_omr
+            ):
+                is_latest_document = (
+                    count_attachment_with_omr >= total_attachment_with_omr
+                )
+                to_print = attachment.communication_id.add_omr_marks(
+                    attachment.data, is_latest_document
+                )
+                count_attachment_with_omr += 1
+            else:
+                to_print = attachment.data
+
+            report = self.env["ir.actions.report"]._get_report_from_name(
+                attachment.report_name
+            ).with_context(
+                lang=attachment.communication_id.partner_id.lang)
+            behaviour = report.behaviour()
+            printer = behaviour.pop("printer", False)
+            if behaviour.pop("action", "client") != "client" and printer:
+                print_options = {opt: value for opt, value in behaviour.items() if
+                                 value}
+                if output_tray:
+                    print_options["output_tray"] = output_tray
+                printer.with_context(
+                    print_name=self.env.user.firstname[:3] + " " + attachment.name,
+                ).print_document(attachment.report_name, to_print, **print_options)
         return True

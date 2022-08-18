@@ -1,134 +1,104 @@
-# -*- encoding: utf-8 -*-
 ##############################################################################
 #
 #    Copyright (C) 2015 Compassion CH (http://www.compassion.ch)
 #    Releasing children from poverty in Jesus' name
 #    @author: Albert SHENOUDA <albert.shenouda@efrei.net>
 #
-#    The licence is in the file __openerp__.py
+#    The licence is in the file __manifest__.py
 #
 ##############################################################################
-
-
-from datetime import datetime
-from openerp.addons.contract_compassion.tests.test_base_module\
-    import test_base_module
-from openerp.tools import DEFAULT_SERVER_DATE_FORMAT as DF
 import logging
+from datetime import datetime, timedelta
+
+from odoo.addons.sponsorship_compassion.tests.test_sponsorship_compassion import (
+    BaseSponsorshipTest,
+)
+
 logger = logging.getLogger(__name__)
 
 
-class test_crm_compassion(test_base_module):
-
-    def setUp(self):
-        super(test_crm_compassion, self).setUp()
-        # Creation of partners
-        self.admin_id = self.env['res.users'].search(
-            [('name', '=', 'Administrator')])[0].id
-        self.partner_id = self.env['res.partner'].search(
-            [('name', '=', 'Michel Fletcher')])[0].id
-
-    def test_crm_compassion(self):
+class TestCrmCompassion(BaseSponsorshipTest):
+    def test_crm(self):
         """
             This scenario consists in the creation of an opportunity,
-            then comes the event. Check if the project which is created from
-            the event has coherent data with the event.
+            then comes the event.
             Check if we can find the origin from the event in a sponsorship
             contract.
         """
         # Creation of a lead and an event
-        lead = self._create_lead(
-            'PlayoffsCompassion', self.admin_id)
-        lead2 = self._create_lead(
-            'JO_Compassion', self.admin_id)
+        lead = self._create_lead("PlayoffsCompassion", 1)
+        lead2 = self._create_lead("JO_Compassion", 1)
         self.assertTrue(lead.id)
-        event = self._create_event(lead, 'sport')
-        event2 = self._create_event(lead2, 'sport')
+        event = self._create_event(lead, "sport")
+        event2 = self._create_event(lead2, "sport")
         self.assertTrue(event.id)
-        event.write({'use_tasks': True, 'partner_id': self.partners[2].id})
-        event2.write({'use_tasks': True, 'partner_id': self.partners[2].id})
-        self.assertTrue(event.project_id)
-
-        # Retrieve of the project from the event
-        project = self.env['project.project'].browse(event.project_id.id)
-
-        # Creation of a marketing project and check if an origin is created
-        self._create_project(
-            'Marketing Project', 'employees', self.admin_id, 'marketing', True)
-        mark_origin = self.env['recurring.contract.origin'].search(
-            [('type', '=', 'marketing')])
-        self.assertTrue(mark_origin)
-        self.assertEqual(project.date_start, event.start_date[:10])
-        self.assertEqual(project.analytic_account_id, event.analytic_id)
-        self.assertEqual(project.project_type, event.type)
-        self.assertEqual(project.user_id, event.user_id)
-        self.assertEqual(project.name, event.name)
-        # Create a child and get the project associated
-        child = self.env['compassion.child'].create({'code': 'PE3760136'})
-        child.project_id.write({'disburse_funds': True})
+        event.write({"use_tasks": True, "partner_id": self.david.id})
+        event2.write({"use_tasks": True, "partner_id": self.david.id})
 
         # Creation of the sponsorship contract
-        sp_group = self._create_group(
-            'do_nothing', self.partners.ids[2], 1, self.payment_term_id)
-        sponsorship = self._create_contract(
-            datetime.today().strftime(DF), sp_group,
-            datetime.today().strftime(DF),
-            other_vals={
-                'origin_id': event.origin_id.id,
-                'channel': 'postal',
-                'type': 'S',
-                'child_id': child.id,
-                'correspondant_id': sp_group.partner_id.id
-            })
-        sponsorship.write({'user_id': self.partner_id})
+        child = self.create_child("AB123456789")
+        sp_group = self.create_group({"partner_id": self.thomas.id})
+        sponsorship = self.create_contract(
+            {
+                "partner_id": self.thomas.id,
+                "group_id": sp_group.id,
+                "origin_id": event.origin_id.id,
+                "child_id": child.id,
+                "correspondent_id": sp_group.partner_id.id,
+            },
+            [{"amount": 50.0}],
+        )
+        sponsorship.write({"user_id": self.michel.id})
+        mark_origin = self.env["recurring.contract.origin"].search(
+            [("type", "=", "marketing")]
+        )
         self.assertEqual(sponsorship.origin_id.name, event.full_name)
-        self.assertEqual(sponsorship.state, 'draft')
-        sponsorship.write({'origin_id': mark_origin.id})
+        self.assertEqual(sponsorship.state, "draft")
+        sponsorship.write({"origin_id": mark_origin.id})
         sponsorship.on_change_origin()
-        self.assertEqual(
-            sponsorship.user_id.id,
-            mark_origin.analytic_id.manager_id.partner_id.id)
-        sponsorship.signal_workflow('contract_validated')
-        invoicer_id = sponsorship.button_generate_invoices()
-        invoices = invoicer_id.invoice_ids
+        self.validate_sponsorship(sponsorship)
+        invoices = sponsorship.invoice_line_ids.mapped("invoice_id")
         self.assertEqual(len(invoices), 2)
-        self.assertEqual(invoices[0].state, 'open')
-        self.assertEqual(
-            invoices[0].invoice_line[0].user_id, sponsorship.user_id)
-        event_dico = self.partners[2].open_events()
-        self.assertEqual(len(event_dico['domain'][0][2]), 2)
+        self.assertEqual(invoices[0].state, "open")
+        self.assertEqual(invoices[0].invoice_line_ids[0].user_id, sponsorship.user_id)
+        event_dico = self.david.open_events()
+        self.assertEqual(len(event_dico["domain"][0][2]), 2)
         is_unlinked = event.unlink()
         self.assertTrue(is_unlinked)
 
-    def _create_project(self, name, privacy_visibility, user_id, type, bool):
-        project_id = self.env['project.project'].create(
-            {
-                'name': name,
-                'privacy_visibility': privacy_visibility,
-                'user_id': user_id,
-                'project_type': type,
-                'use_tasks': bool,
-                'date_start': datetime.today().strftime(DF),
-            })
-        return project_id
+    def test_calendar_event_synchronization(self):
+        lead = self._create_lead("MyLead", 1)
 
-    def _create_event(self, lead, type):
+        event = self._create_event(lead, "sport")
+        self.assertEqual(event.calendar_event_id.duration, 9)
+
+        in_two_days = datetime.today().date() + timedelta(days=2)
+        event.end_date = datetime.combine(in_two_days, datetime.min.time())
+        self.assertEqual(event.calendar_event_id.duration, 48)
+
+        # The event duration should have a lower bound of 3 hours
+        event.end_date = datetime.combine(datetime.today(), datetime.min.time())
+        self.assertEqual(event.calendar_event_id.duration, 3)
+
+    def _create_event(self, lead, event_type):
         event_dico = lead.create_event()
-        event = self.env['crm.event.compassion'].create(
+        now = datetime.today().date()
+        event = self.env["crm.event.compassion"].create(
             {
-                'name': event_dico['context']['default_name'],
-                'type': type,
-                'start_date': datetime.today().strftime(DF),
-                'lead_id': lead.id,
-                'user_id': event_dico['context']['default_user_id'],
-                'parent_id': 7,
-            })
+                "name": event_dico["context"]["default_name"],
+                "type": event_type,
+                "start_date": now,
+                "end_date": datetime.today().replace(hour=8, minute=43),
+                "hold_start_date": now,
+                "hold_end_date": now,
+                "number_allocate_children": 2,
+                "planned_sponsorships": 0,
+                "lead_id": lead.id,
+                "user_id": event_dico["context"]["default_user_id"],
+            }
+        )
         return event
 
     def _create_lead(self, name, user_id):
-        lead = self.env['crm.lead'].create(
-            {
-                'name': name,
-                'user_id': user_id,
-            })
+        lead = self.env["crm.lead"].create({"name": name, "user_id": user_id, })
         return lead

@@ -1,57 +1,53 @@
-# -*- encoding: utf-8 -*-
 ##############################################################################
 #
 #    Copyright (C) 2016 Compassion CH (http://www.compassion.ch)
 #    Releasing children from poverty in Jesus' name
 #    @author: Emanuel Cino <ecino@compassion.ch>
 #
-#    The licence is in the file __openerp__.py
+#    The licence is in the file __manifest__.py
 #
 ##############################################################################
 
-from openerp import models, fields, api
+from odoo.addons.child_compassion.models.compassion_hold import HoldType
 
-from openerp.addons.child_compassion.models.compassion_hold import \
-    HoldType
+from odoo import models, fields, api
 
 
 class EndContractWizard(models.TransientModel):
-    _inherit = 'end.contract.wizard'
+    _inherit = "end.contract.wizard"
 
-    child_id = fields.Many2one(related='contract_id.child_id')
-    do_transfer = fields.Boolean('I want to transfer the child')
-    transfer_country_id = fields.Many2one(
-        'compassion.global.partner', 'Country')
-    keep_child_on_hold = fields.Boolean(default=True)
+    keep_child_on_hold = fields.Boolean()
     hold_expiration_date = fields.Datetime(
-        default=lambda s: s.env[
-            'compassion.hold'].get_default_hold_expiration(
-            HoldType.SPONSOR_CANCEL_HOLD),
-        required=True)
+        default=lambda s: s.env["compassion.hold"].get_default_hold_expiration(
+            HoldType.SPONSOR_CANCEL_HOLD
+        ),
+        required=True,
+    )
 
     @api.multi
     def end_contract(self):
         self.ensure_one()
-        child = self.child_id
+        super().end_contract()
 
-        if self.keep_child_on_hold:
-            if child.hold_id:
-                # Update the hold
-                child.hold_id.write({
-                    'type': HoldType.SPONSOR_CANCEL_HOLD.value,
-                    'expiration_date': self.hold_expiration_date
-                })
+        for contract in self.contract_ids.filtered("child_id"):
+            child = contract.child_id
+            child.child_unsponsored()
+            if self.keep_child_on_hold:
+                if child.hold_id:
+                    # Update the hold
+                    child.hold_id.write(
+                        {
+                            "type": HoldType.SPONSOR_CANCEL_HOLD.value,
+                            "expiration_date": self.hold_expiration_date,
+                        }
+                    )
+                else:
+                    # Setup a hold expiration in the sponsorship
+                    contract.hold_expiration_date = self.hold_expiration_date
             else:
-                # Setup a hold expiration in the sponsorship
-                self.contract_id.hold_expiration_date = \
-                    self.hold_expiration_date
-        else:
-            # Setup the hold expiration now
-            self.contract_id.hold_expiration_date = fields.Datetime.now()
-            # Remove the hold on the child
-            if child.hold_id:
-                child.hold_id.release_hold()
-
-        child.signal_workflow('release')
-
-        return super(EndContractWizard, self).end_contract()
+                # Setup the hold expiration now
+                contract.hold_expiration_date = fields.Datetime.now()
+                # Remove the hold on the child
+                if child.hold_id:
+                    child.hold_id.release_hold()
+        return True

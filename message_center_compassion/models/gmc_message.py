@@ -1,113 +1,91 @@
-# -*- encoding: utf-8 -*-
 ##############################################################################
 #
-#    Copyright (C) 2014-2016 Compassion CH (http://www.compassion.ch)
+#    Copyright (C) 2014-2017 Compassion CH (http://www.compassion.ch)
 #    Releasing children from poverty in Jesus' name
 #    @author: Emanuel Cino <ecino@compassion.ch>
 #
-#    The licence is in the file __openerp__.py
+#    The licence is in the file __manifest__.py
 #
 ##############################################################################
+import json
+import logging
 import re
-
-from ..tools.onramp_connector import OnrampConnector
-from ..mappings import base_mapping as mapping
-
-from openerp import api, models, fields, _
-from openerp.exceptions import Warning
-
-from openerp.addons.connector.queue.job import job, related_action
-from openerp.addons.connector.session import ConnectorSession
-
+import traceback
 from datetime import datetime
 
-import logging
-import traceback
-import simplejson as json
+from odoo import api, models, fields, tools, _
+from odoo.exceptions import UserError
+from ..tools.onramp_connector import OnrampConnector
+
 logger = logging.getLogger(__name__)
+testing = tools.config.get("test_enable")
 
 
-class GmcMessagePoolProcess(models.TransientModel):
-    _name = 'gmc.message.pool.process'
-
-    @api.multi
-    def process_messages(self):
-        active_ids = self.env.context.get('active_ids', [])
-        self.env['gmc.message.pool'].browse(active_ids).process_messages()
-        action = {
-            'name': 'Message treated',
-            'type': 'ir.actions.act_window',
-            'view_type': 'form',
-            'view_mode': 'tree, form',
-            'views': [(False, 'tree'), (False, 'form')],
-            'res_model': 'gmc.message.pool',
-            'domain': [('id', 'in', active_ids)],
-            'target': 'current',
-        }
-
-        return action
-
-
-class GmcMessagePool(models.Model):
+class GmcMessage(models.Model):
     """ Pool of messages exchanged between Compassion CH and GMC. """
-    _name = 'gmc.message.pool'
-    _inherit = ['mail.thread', 'ir.needaction_mixin']
-    _description = 'Connect Message'
 
-    _order = 'date desc'
+    _name = "gmc.message"
+    _inherit = ["mail.thread", "mail.activity.mixin"]
+    _description = "Connect Message"
+
+    _order = "date desc"
 
     ##########################################################################
     #                                 FIELDS                                 #
     ##########################################################################
-    name = fields.Char(
-        related='action_id.name', readonly=True)
+    name = fields.Char(related="action_id.name", readonly=True)
     description = fields.Text(
-        'Action to execute', related='action_id.description', readonly=True)
-    direction = fields.Selection(related='action_id.direction', store=True)
-    object_id = fields.Integer('Resource')
+        "Action to execute", related="action_id.description", readonly=True
+    )
+    direction = fields.Selection(
+        related="action_id.direction", store=True, readonly=True
+    )
+    object_id = fields.Integer("Resource")
     object_ids = fields.Char(
-        'Related records', help='Used for incoming messages containing '
-                                'several records. (ids separated by commas)')
-    res_name = fields.Char(compute='_compute_res_name', store=True)
-    partner_id = fields.Many2one('res.partner', 'Partner')
+        "Related records",
+        help="Used for incoming messages containing "
+             "several records. (ids separated by commas)",
+    )
+    res_name = fields.Char(compute="_compute_res_name", store=True)
+    partner_id = fields.Many2one("res.partner", "Partner", readonly=False)
 
-    request_id = fields.Char('Unique request ID', readonly=True)
-    date = fields.Datetime(
-        'Message Date', required=True,
-        default=fields.Datetime.now)
+    request_id = fields.Char("Request ID", readonly=True)
+    date = fields.Datetime("Message Date", required=True, default=fields.Datetime.now)
     action_id = fields.Many2one(
-        'gmc.action', 'GMC Message', ondelete='restrict',
-        required=True, readonly=True)
-    process_date = fields.Datetime(readonly=True, track_visibility='onchange')
+        "gmc.action", "GMC Message", ondelete="restrict", required=False, readonly=True
+    )
+    process_date = fields.Datetime(readonly=True, track_visibility="onchange")
     state = fields.Selection(
-        [('new', _('New')),
-         ('pending', _('Pending')),
-         ('postponed', _('Postponed')),
-         ('success', _('Success')),
-         ('failure', _('Failure'))],
-        'State', readonly=True, default='new', track_visibility='always')
-    failure_reason = fields.Text(
-        'Failure details', track_visibility='onchange')
-    headers = fields.Text()
+        [
+            ("new", _("New")),
+            ("pending", _("Pending")),
+            ("postponed", _("Postponed")),
+            ("success", _("Success")),
+            ("failure", _("Failure")),
+            ("odoo_failure", _("Odoo Failure")),
+        ],
+        "State",
+        readonly=True,
+        default="new",
+        track_visibility="always",
+    )
+    failure_reason = fields.Text("Failure details", track_visibility="onchange")
+    headers = fields.Text(readonly=True)
     content = fields.Text()
-
-    _sql_constraints = [
-        ('request_id_uniq', 'UNIQUE(request_id)',
-         _("You cannot have two requests with same id."))]
+    answer = fields.Text(readonly=True)
 
     ##########################################################################
     #                             FIELDS METHODS                             #
     ##########################################################################
-    @api.depends('object_id', 'action_id')
+    @api.depends("object_id", "action_id")
     def _compute_res_name(self):
         for message in self:
             try:
-                res_object = self.env[message.action_id.model].browse(
-                    message.object_id)
+                res_object = self.env[message.action_id.model].browse(message.object_id)
                 if res_object:
                     message.res_name = res_object.display_name
             except KeyError:
-                message.res_name = 'Unknown'
+                message.res_name = "Unknown"
 
     ##########################################################################
     #                              ORM METHODS                               #
@@ -115,14 +93,17 @@ class GmcMessagePool(models.Model):
     @api.model
     def create(self, vals):
         message = False
-        if 'object_id' in vals:
-            message = self.search([
-                ('object_id', '=', vals['object_id']),
-                ('state', 'in', ('new', 'pending')),
-                ('action_id', '=', vals['action_id'])])
+        if "object_id" in vals:
+            message = self.search(
+                [
+                    ("object_id", "=", vals["object_id"]),
+                    ("state", "in", ("new", "pending")),
+                    ("action_id", "=", vals["action_id"]),
+                ]
+            )
 
         if not message:
-            message = super(GmcMessagePool, self).create(vals)
+            message = super().create(vals)
 
         if message.action_id.auto_process:
             message.process_messages()
@@ -137,57 +118,58 @@ class GmcMessagePool(models.Model):
 
     @api.multi
     def process_messages(self):
-        new_messages = self.filtered(
-            lambda m: m.state in ('new', 'failure', 'pending'))
-        new_messages.write({'state': 'pending', 'failure_reason': False})
-        if self.env.context.get('async_mode', True):
-            session = ConnectorSession.from_env(self.env)
-            process_messages_job.delay(session, self._name, new_messages.ids)
+        new_messages = self.filtered(lambda m: m.state not in ("postponed", "success"))
+        new_messages.write({"state": "pending", "failure_reason": False})
+        if self.env.context.get("async_mode", True):
+            new_messages.with_delay()._process_messages()
         else:
             new_messages._process_messages()
         return True
+
+    @api.multi
+    def get_answer_dict(self, index=0):
+        answer = json.loads(self[index].answer)
+        if isinstance(answer, list):
+            answer = answer[index]
+        return answer
 
     ##########################################################################
     #                             VIEW CALLBACKS                             #
     ##########################################################################
     @api.multi
     def force_success(self):
-        self.write({'state': 'success', 'failure_reason': False})
+        self.write({"state": "success", "failure_reason": False})
+        self.mapped("message_ids").unlink()
         return True
 
     @api.multi
     def reset_message(self):
-        self.write({
-            'request_id': False,
-            'state': 'new',
-            'process_date': False,
-            'failure_reason': False
-        })
+        self.write({"state": "new", "process_date": False, "failure_reason": False})
         return True
 
     @api.multi
     def open_related(self):
         self.ensure_one()
-        if self.direction == 'out':
+        if self.direction == "out":
             # Outgoing messages are always related to one object.
             return {
-                'name': 'Related object',
-                'type': 'ir.actions.act_window',
-                'res_model': self.action_id.model,
-                'res_id': self.object_id,
-                'view_type': 'form',
-                'view_mode': 'form',
+                "name": "Related object",
+                "type": "ir.actions.act_window",
+                "res_model": self.action_id.model,
+                "res_id": self.object_id,
+                "view_type": "form",
+                "view_mode": "form",
             }
         else:
             # Incoming messages can be related to several objects.
-            res_ids = self.object_ids.split(',')
+            res_ids = self.object_ids.split(",")
             return {
-                'name': 'Related object',
-                'type': 'ir.actions.act_window',
-                'res_model': self.action_id.model,
-                'domain': [('id', 'in', res_ids)],
-                'view_type': 'form',
-                'view_mode': 'tree,form',
+                "name": "Related object",
+                "type": "ir.actions.act_window",
+                "res_model": self.action_id.model,
+                "domain": [("id", "in", res_ids)],
+                "view_type": "form",
+                "view_mode": "tree,form",
             }
 
     ##########################################################################
@@ -197,50 +179,48 @@ class GmcMessagePool(models.Model):
     def _process_messages(self):
         """ Process given messages in pool. """
         today = datetime.now()
-        messages = self.filtered(lambda mess: mess.state == 'pending')
-        if not self.env.context.get('force_send'):
-            messages = messages.filtered(
-                lambda mess: fields.Datetime.from_string(mess.date) <= today)
+        messages = self.filtered(lambda mess: mess.state == "pending")
+        if not self.env.context.get("force_send"):
+            messages = messages.filtered(lambda mess: mess.date <= today)
 
         # Verify all messages have the same action (cannot execute multiple
         # actions at once)
-        action = messages.mapped('action_id')
+        action = messages.mapped("action_id")
         if len(action) > 1:
-            raise Warning(_("Cannot process several actions at the same "
-                            "time. Please process each message type "
-                            "individually."))
+            raise UserError(
+                _(
+                    "Cannot process several actions at the same "
+                    "time. Please process each message type "
+                    "individually."
+                )
+            )
         elif not action:
             # No messages pending
             return True
 
-        message_update = {'process_date': fields.Datetime.now()}
-        if action.direction == 'in':
+        message_update = {"process_date": fields.Datetime.now()}
+        if action.direction == "in":
             try:
                 message_update.update(self._perform_incoming_action())
-            except Exception:
+            except:
                 # Abort pending operations
+                logger.error("Failure when processing message", exc_info=True)
                 self.env.cr.rollback()
-                self.env.invalidate_all()
+                self.env.clear()
                 # Write error
-                message_update.update({
-                    'state': 'failure',
-                    'failure_reason': traceback.format_exc()})
+                message_update.update(
+                    {"state": "failure", "failure_reason": traceback.format_exc()}
+                )
 
-        elif action.direction == 'out':
-            try:
-                self._perform_outgoing_action()
-            except Warning as e:
-                # Put the messages in failure state
-                self.write({
-                    'state': 'failure',
-                    'failure_reason': e.args[1]
-                })
-                self.env.cr.commit()
-                raise
+        elif action.direction == "out":
+            self._perform_outgoing_action()
         else:
             raise NotImplementedError
 
         self.write(message_update)
+        if message_update.get("state") == "success":
+            # Remove thread history
+            self.mapped("message_ids").unlink()
 
         return True
 
@@ -248,163 +228,244 @@ class GmcMessagePool(models.Model):
         """ Convert the data incoming from Connect into Odoo object values
         and call the process_commkit method on the related object. """
         object_ids = list()
-        action = self.mapped('action_id')
+        action = self.mapped("action_id")
         for message in self:
             model_obj = self.env[action.model]
             commkit_data = [json.loads(message.content)]
+
             object_ids.extend(
-                map(str,
-                    getattr(model_obj, action.incoming_method)(*commkit_data)))
+                map(str, getattr(model_obj, action.incoming_method)(*commkit_data))
+            )
+
         return {
-            'state': 'success' if object_ids else 'failure',
-            'object_ids': ','.join(object_ids),
-            'failure_reason': 'No related objects found.' if not object_ids
-            else False
+            "state": "success" if object_ids else "failure",
+            "object_ids": ",".join(object_ids),
+            "failure_reason": "No related objects found." if not object_ids else False,
         }
 
     def _perform_outgoing_action(self):
         """ Send a message to Compassion Connect"""
         # Load objects
-        action = self.mapped('action_id')
-        data_objects = self.env[action.model].with_context(
-            lang='en_US').browse(self.mapped('object_id'))
+        action = self.mapped("action_id")
+        data_objects = (
+            self.env[action.model]
+                .with_context(lang="en_US")
+                .browse(self.mapped("object_id"))
+        )
+
+        # Replay answer if message was already sent and received success
+        to_send = self
+        for i, message in enumerate(self):
+            if message.request_id:
+                answer_data = json.loads(message.answer)
+                message._process_single_answer(data_objects[i], answer_data)
+                to_send -= message
+
         # Notify objects sent to connect for special handling if needed.
-        if hasattr(data_objects, 'on_send_to_connect'):
+        data_objects = (
+            self.env[action.model]
+                .with_context(lang="en_US")
+                .browse(to_send.mapped("object_id"))
+        )
+        if hasattr(data_objects, "on_send_to_connect"):
             data_objects.on_send_to_connect()
 
-        object_mapping = mapping.new_onramp_mapping(
-            action.model, self.env, action.mapping_name)
+        message_data = {}
         if action.connect_outgoing_wrapper:
             # Object is wrapped in a tag. ("MessageTag": [objects_to_send])
             if action.batch_send:
                 # Send multiple objects in a single message to GMC
                 # make batch of 20 messages to avoid timeouts
                 split = 20
-                nb_batches = len(data_objects) / split
+                nb_batches = len(data_objects) // split
                 remaining = (len(data_objects) % split) and 1
                 for j in range(0, nb_batches + remaining):
-                    i = j*split
+                    i = j * split
                     message_data = {action.connect_outgoing_wrapper: list()}
-                    for data_object in data_objects[i:i+split]:
-                        message_data[action.connect_outgoing_wrapper].append(
-                            object_mapping.get_connect_data(data_object)
-                        )
-                    self[i:i+split]._send_message(message_data)
+                    for data_object in data_objects[i: i + split]:
+                        if not action.no_outgoing_data:
+                            message_data[action.connect_outgoing_wrapper].append(
+                                data_object.data_to_json(action.mapping_id.name)
+                            )
+                        else:
+                            message_data[action.connect_outgoing_wrapper].append({})
+                    to_send[i: i + split]._send_message(message_data)
             else:
                 # Send individual message for each object
-                message_data = dict()
                 for i in range(0, len(data_objects)):
-                    message_data[action.connect_outgoing_wrapper] = [
-                        object_mapping.get_connect_data(data_objects[i])
-                    ]
-                    self[i]._send_message(message_data)
+                    if not action.no_outgoing_data:
+                        message_data[action.connect_outgoing_wrapper] = [
+                            data_objects[i].data_to_json(action.mapping_id.name)
+                        ]
+                    else:
+                        message_data[action.connect_outgoing_wrapper] = {}
+                    to_send[i]._send_message(message_data)
 
         else:
             # Send individual message for each object without Wrapper
             for i in range(0, len(data_objects)):
-                message_data = object_mapping.get_connect_data(
-                    data_objects[i])
-                self[i]._send_message(message_data)
+                if not action.no_outgoing_data:
+                    message_data = data_objects[i].data_to_json(action.mapping_id.name)
+                to_send[i]._send_message(message_data)
 
     def _send_message(self, message_data):
         """Sends the prepared message and gets the answer from GMC."""
-        action = self.mapped('action_id')
+        action = self.mapped("action_id")
         onramp = OnrampConnector()
         url_endpoint = self._get_url_endpoint()
-        if action.request_type == 'GET':
+        if action.request_type == "GET":
             onramp_answer = onramp.send_message(
-                url_endpoint, action.request_type, params=message_data)
+                url_endpoint, action.request_type, params=message_data
+            )
         else:
             onramp_answer = onramp.send_message(
-                url_endpoint, action.request_type, body=message_data)
+                url_endpoint, action.request_type, body=message_data
+            )
 
         # Extract the Answer
-        results = onramp_answer.get('content', {})
+        content_sent = message_data.get(action.connect_outgoing_wrapper, message_data)
+        content_data = json.dumps(content_sent, indent=4, sort_keys=True)
+        results = onramp_answer.get("content", {})
         answer_wrapper = action.connect_answer_wrapper
-        if answer_wrapper:
-            for wrapper in answer_wrapper.split('.'):
-                results = results.get(wrapper, results)
+        try:
+            if answer_wrapper:
+                for wrapper in answer_wrapper.split("."):
+                    results = results.get(wrapper, results)
+        except (AttributeError, KeyError):
+            logger.error("Unexpected answer: %s", results)
         if not results:
-            self._answer_failure(onramp_answer)
+            self._answer_failure(content_data, onramp_answer)
             return
 
-        if 200 <= onramp_answer['code'] < 300:
+        if not isinstance(results, list):
+            results = [results]
+        data_objects = (
+            self.env[action.model]
+                .with_context(lang="en_US")
+                .browse(self.mapped("object_id"))
+        )
+
+        if 200 <= onramp_answer["code"] < 300:
             # Success, loop through answer to get individual results
-            data_objects = self.env[action.model].with_context(
-                lang='en_US').browse(self.mapped('object_id'))
-
-            object_mapping = mapping.new_onramp_mapping(
-                action.model, self.env, action.mapping_name)
-
-            if not isinstance(results, list):
-                results = [results]
             for i in range(0, len(results)):
                 result = results[i]
-                content_sent = message_data.get(
-                    action.connect_outgoing_wrapper, message_data)
-                mess_vals = {
-                    'content': json.dumps(content_sent[i]) if isinstance(
-                        content_sent, list) else json.dumps(content_sent),
-                    'request_id': onramp_answer.get('request_id', False)
-                }
-                if result.get('Code', 2000) == 2000:
+                content_data = (
+                    json.dumps(content_sent[i], indent=4, sort_keys=True)
+                    if isinstance(content_sent, list)
+                    else content_data
+                )
+                if isinstance(result, dict) and result.get("Code", 2000) == 2000:
                     # Individual message was successfully processed
-                    answer_vals = [object_mapping.get_vals_from_connect(
-                        result)]
-                    try:
-                        getattr(data_objects[i], action.success_method)(
-                            *answer_vals)
-                        mess_vals['state'] = 'success'
-                    except Exception as e:
-                        mess_vals.update({
-                            'state': 'failure',
-                            'failure_reason': e.message,
-                        })
+                    # Commit state before processing the success
+                    self[i].write(
+                        {
+                            "content": content_data,
+                            "request_id": onramp_answer.get(
+                                "request_id") or str(self[i].id),
+                            "answer": json.dumps(result, indent=4, sort_keys=True),
+                            "state": "success"
+                        }
+                    )
+                    if not testing:
+                        self.env.cr.commit()  # pylint:disable=invalid-commit
+                    self[i]._process_single_answer(data_objects[i], result)
+                elif isinstance(result, dict):
+                    if action.failure_method:
+                        getattr(data_objects[i], action.failure_method)(result)
+                    self[i].write(
+                        {
+                            "content": content_data,
+                            "state": "failure",
+                            "failure_reason": result["Message"],
+                            "answer": json.dumps(result, indent=4, sort_keys=True),
+                        }
+                    )
                 else:
-                    mess_vals.update({
-                        'state': 'failure',
-                        'failure_reason': result['Message'],
-                    })
-                self[i].write(mess_vals)
+                    # We got a simple string as result, nothing more to do
+                    self[i].write(
+                        {
+                            "content": content_data,
+                            "state": "success",
+                            "answer": str(result),
+                        }
+                    )
         else:
-            self._answer_failure(onramp_answer, results)
+            for i in range(0, len(results)):
+                result = results[i]
+                if action.failure_method:
+                    getattr(data_objects[i], action.failure_method)(result)
+                self.write(
+                    {"content": json.dumps(content_sent, indent=4, sort_keys=True)}
+                )
+                self[i]._answer_failure(content_data, onramp_answer, result)
 
-    def _answer_failure(self, onramp_answer, results=None):
+    def _process_single_answer(self, data_object, answer_data):
+        """
+        When processing outgoing messages, here we treat a single
+        response for a message and execute the appropriate callback.
+        :param data_object: the related object of the message
+        :param answer_data: the json returned by GMC
+        :return: None
+        """
+        self.ensure_one()
+        action = self.action_id
+        try:
+            answer_data = data_object.json_to_data(answer_data, action.mapping_id.name)
+            f = getattr(data_object, action.success_method)
+            f(answer_data)
+            self.state = "success"
+        except Exception as e:
+            logger.error(traceback.format_exc())
+            self.env.cr.rollback()
+            self.env.clear()
+            try:
+                if action.failure_method:
+                    getattr(data_object, action.failure_method)(answer_data)
+            except:
+                pass
+            self.write(
+                {"state": "odoo_failure", "failure_reason": str(e), }
+            )
+
+    def _answer_failure(self, content_data, onramp_answer, results=None):
         """ Write error message when onramp answer is not a success.
             :onramp_answer: complete message received back
             :results: extracted content from the answer
         """
-        error_code = onramp_answer.get('code', onramp_answer.get('Code'))
+        error_code = onramp_answer.get("code", onramp_answer.get("Code"))
         if results and isinstance(results, list):
-            error_message = '\n'.join(
-                map(lambda m: m.get('Message', ''), results))
+            error_message = "\n".join(map(lambda m: m.get("Message", ""), results))
         else:
-            fail = onramp_answer.get('content', {
-                'Error': onramp_answer.get('Error', 'None')})
-            error_message = str(fail.get('Error', 'None'))
-        self.write({
-            'state': 'failure',
-            'failure_reason':
-                '[%s] %s' % (error_code, error_message or 'None')
-        })
+            error_message = onramp_answer.get(
+                "content", {"Error": onramp_answer.get("Error", "None")}
+            )
+        self.write(
+            {
+                "state": "failure",
+                "failure_reason": f"[{error_code}] {error_message}",
+                "answer": json.dumps(
+                    results or onramp_answer, indent=4, sort_keys=True),
+                "content": content_data
+            }
+        )
 
     def _get_url_endpoint(self):
         """ Gets the endpoint of GMC based on the action. """
-        url_endpoint = self.mapped('action_id').connect_service
-        if '${object' in url_endpoint:
+        url_endpoint = self.mapped("action_id").connect_service
+        if "${object" in url_endpoint:
             url_endpoint = re.sub(
-                '\$\{(object\.)(.+?)\}',
+                r"\$\{(object\.)(.+?)\}",
                 lambda match: self._replace_object_string(match),
-                url_endpoint
+                url_endpoint,
             )
         return url_endpoint
 
     def _replace_object_string(self, object_match):
         """ Takes a string like ${object.field} and returns the field. """
         self.ensure_one()
-        object = self.env[self.action_id.model].browse(self.object_id)
+        obj = self.env[self.action_id.model].browse(self.object_id)
         field_name = object_match.groups()[1]
-        field_value = object.mapped(field_name)[0]
+        field_value = obj.mapped(field_name)[0]
         return str(field_value)
 
     def _validate_outgoing_action(self):
@@ -413,28 +474,4 @@ class GmcMessagePool(models.Model):
 
     @api.model
     def _needaction_domain_get(self):
-        return [('state', 'in', ('new', 'pending'))]
-
-
-##############################################################################
-#                            CONNECTOR METHODS                               #
-##############################################################################
-def related_action_messages(session, job):
-    message_ids = job.args[1]
-    action = {
-        'name': _("Messages"),
-        'type': 'ir.actions.act_window',
-        'res_model': 'gmc.message.pool',
-        'domain': [('id', 'in', message_ids)],
-        'view_type': 'form',
-        'view_mode': 'tree,form',
-    }
-    return action
-
-
-@job(default_channel='root.gmc_pool')
-@related_action(action=related_action_messages)
-def process_messages_job(session, model_name, message_ids):
-    """Job for processing messages."""
-    messages = session.env[model_name].browse(message_ids)
-    messages._process_messages()
+        return [("state", "in", ("new", "pending"))]

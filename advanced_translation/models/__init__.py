@@ -1,12 +1,7 @@
-# -*- encoding: utf-8 -*-
-##############################################################################
-#
-#    Copyright (C) 2016 Compassion CH (http://www.compassion.ch)
-#    Releasing children from poverty in Jesus' name
-#    @author: Emanuel Cino <ecino@compassion.ch>
-#
-#    The licence is in the file __openerp__.py
-#
-##############################################################################
-
 from . import ir_advanced_translation
+from . import langdetect
+from . import ocr
+from . import lang_compassion
+from . import translatable_model
+from . import res_partner_test
+from . import res_partner_title

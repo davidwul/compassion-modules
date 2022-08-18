@@ -1,54 +1,65 @@
-# -*- encoding: utf-8 -*-
 ##############################################################################
 #
 #    Copyright (C) 2016 Compassion CH (http://www.compassion.ch)
 #    Releasing children from poverty in Jesus' name
 #    @author: Emanuel Cino <ecino@compassion.ch>
 #
-#    The licence is in the file __openerp__.py
+#    The licence is in the file __manifest__.py
 #
 ##############################################################################
 import base64
+import logging
 
-from openerp import models, api, fields
+from odoo import models, api, fields
+
+_logger = logging.getLogger(__name__)
+
+try:
+    from wand.image import Image
+except ImportError:
+    _logger.warning("Please install wand to use PDF Previews")
 
 
 class PdfPreviewWizard(models.TransientModel):
     """
     Generate pdf of communication.
     """
-    _name = 'partner.communication.pdf.wizard'
 
-    fname = fields.Char(default='preview.pdf', readonly=True)
-    pdf = fields.Binary(
-        'Download the preview', default=lambda s: s._get_pdf(), readonly=True
+    _name = "partner.communication.pdf.wizard"
+    _description = "Partner Communication - PDF Wizard"
+
+    communication_id = fields.Many2one(
+        "partner.communication.job", required=True, ondelete="cascade", readonly=False
     )
-    state = fields.Char(default=lambda s: s._get_state())
-    body_html = fields.Html(default=lambda s: s._get_html(), readonly=True)
+    preview = fields.Binary(compute="_compute_pdf")
+    state = fields.Selection(related="communication_id.send_mode")
+    send_state = fields.Selection(related="communication_id.state")
+    body_html = fields.Html(compute="_compute_html")
 
-    @api.model
-    def _get_state(self):
-        context = self.env.context
-        comm = self.env[context['active_model']].browse(context['active_id'])
-        return comm.send_mode
+    @api.multi
+    def _compute_pdf(self):
+        if self.state != "physical":
+            return
+        comm = self.communication_id
+        report = comm.report_id.with_context(
+            lang=comm.partner_id.lang, must_skip_send_to_printer=True, bin_size=False
+        )
+        data = report.render_qweb_pdf(comm.ids)
+        with Image(blob=data[0], resolution=150) as pdf_image:
+            preview = base64.b64encode(pdf_image.make_blob(format="jpeg"))
 
-    @api.model
-    def _get_pdf(self):
-        context = self.env.context
-        comm = self.env[context['active_model']].browse(context['active_id'])
-        report_obj = self.env['report'].with_context(
-            lang=comm.partner_id.lang, must_skip_send_to_printer=True)
-        data = report_obj.get_pdf(comm, comm.report_id.report_name)
-        return base64.b64encode(data)
+        self.preview = preview
 
-    @api.model
-    def _get_html(self):
-        context = self.env.context
-        comm = self.env[context['active_model']].browse(context['active_id'])
-        template = comm.email_template_id.sendgrid_localized_template
+    @api.multi
+    def _compute_html(self):
+        comm = self.communication_id
+        template = getattr(comm.email_template_id, "sendgrid_localized_template", False)
         if template:
-            body_html = template.html_content.replace(
-                '<%body%>', comm.body_html)
-            return body_html
+            body_html = template.html_content.replace("<%body%>", comm.body_html)
+            self.body_html = body_html
 
-        return comm.body_html
+        self.body_html = comm.body_html
+
+    @api.multi
+    def send(self):
+        return self.communication_id.send()

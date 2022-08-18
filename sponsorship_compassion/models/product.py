@@ -1,23 +1,19 @@
-# -*- encoding: utf-8 -*-
 ##############################################################################
 #
 #    Copyright (C) 2014 Compassion CH (http://www.compassion.ch)
 #    Releasing children from poverty in Jesus' name
 #    @author: Emanuel Cino <ecino@compassion.ch>
 #
-#    The licence is in the file __openerp__.py
+#    The licence is in the file __manifest__.py
 #
 ##############################################################################
 
-# Name of gifts products
-GIFT_NAMES = ["Birthday Gift", "General Gift", "Family Gift", "Project Gift",
-              "Graduation Gift"]
+from odoo import models, fields
 
-# Name of gift category
-GIFT_CATEGORY = "Sponsor gifts"
 
-# Name of sponsorship category
-SPONSORSHIP_CATEGORY = "Sponsorship"
+class Product(models.Model):
+    _inherit = "product.product"
 
-# Name of fund category
-FUND_CATEGORY = "Fund"
+    categ_name = fields.Char(
+        "Product category", related="product_tmpl_id.categ_id.name", store=True
+    )

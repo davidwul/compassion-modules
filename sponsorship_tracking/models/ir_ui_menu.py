@@ -1,34 +1,35 @@
-# -*- encoding: utf-8 -*-
 ##############################################################################
 #
-#    Copyright (C) 2015 Compassion CH (http://www.compassion.ch)
+#    Copyright (C) 2019 Compassion CH (http://www.compassion.ch)
 #    Releasing children from poverty in Jesus' name
-#    @author: Emanuel Cino <ecino@compassion.ch>
+#    @author: Joel Vaucher <jvaucher@compassion.ch>
 #
-#    The licence is in the file __openerp__.py
+#    The licence is in the file __manifest__.py
 #
 ##############################################################################
-import ast
-from openerp import api, models
+
+from odoo import models, api
+from odoo.tools.safe_eval import safe_eval
 
 
 class IrUiMenu(models.Model):
-
-    _inherit = 'ir.ui.menu'
+    _inherit = "ir.ui.menu"
 
     @api.multi
     def get_needaction_data(self):
-        res = dict()
-        for menu in self:
-            new_context = dict()
-            if (menu.action and hasattr(menu.action, 'context') and
-                    menu.action.context):
-                try:
-                    new_context = ast.literal_eval(menu.action.context)
-                    new_context.update(self.env.context)
-                except:
-                    new_context = self.env.context
-            res.update(
-                super(IrUiMenu,
-                      menu.with_context(new_context)).get_needaction_data())
+        """ add manually the counter for only one menu an not for all
+        menus of a model, doesn't use _needaction_count method """
+        res = super().get_needaction_data()
+
+        # add manually the counter for only
+        # one menu an not for all menus of a model
+        menu_follow_sds = self.env.ref("sponsorship_tracking.menu_follow_sds")
+        if menu_follow_sds.id in self.ids:
+            domain = safe_eval(menu_follow_sds.action.domain)
+            model = menu_follow_sds.action.res_model
+            counter = len(self.env[model].search(domain, limit=100, order="id DESC"))
+
+            res[menu_follow_sds.id]["needaction_enabled"] = True
+            res[menu_follow_sds.id]["needaction_counter"] = counter
+
         return res

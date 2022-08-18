@@ -1,81 +1,33 @@
-# -*- encoding: utf-8 -*-
 ##############################################################################
 #
 #    Copyright (C) 2015 Compassion CH (http://www.compassion.ch)
 #    Releasing children from poverty in Jesus' name
 #    @author: David Coninckx
 #
-#    The licence is in the file __openerp__.py
+#    The licence is in the file __manifest__.py
 #
 ##############################################################################
-from openerp import api, models, fields
-
 from datetime import timedelta, datetime
 
+from psycopg2 import sql
+
+from odoo import api, models
+
 SDS_COLORS = {
-    'sub_accept': '5',
-    'sub_reject': '2',
-    'no_sub': '1',
-    'sub': '0',
-    'sub_waiting': '3',
-    'cancelled': '1',
-    'draft': '7',
-    'active': '0',
+    "sub_accept": "5",
+    "sub_reject": "2",
+    "no_sub": "1",
+    "sub": "0",
+    "sub_waiting": "3",
+    "cancelled": "1",
+    "draft": "7",
+    "active": "0",
 }
 
 
-class recurring_contract(models.TransientModel):
+class InstallSdsTracking(models.TransientModel):
     _name = "install.sds.tracking"
-
-    # Only at module installation
-    @api.model
-    def insert_wkf_items_for_sds_state(self):
-        contract_obj = self.env['recurring.contract']
-        active_contract_ids = contract_obj.search(
-            [('sds_state', '=', 'active')]).ids
-        draft_contract_ids = contract_obj.search(
-            [('sds_state', '=', 'draft')]).ids
-        sub_waiting_contract_ids = contract_obj.search(
-            [('sds_state', '=', 'sub_waiting')]).ids
-        sub_contract_ids = contract_obj.search(
-            [('sds_state', '=', 'sub')]).ids
-        self.env.cr.execute(
-            "SELECT id FROM wkf WHERE name = 'recurring.contract.wkf'")
-        wkf_id = self.env.cr.fetchall()[0][0]
-
-        self._ins_wkf_items('act_draft', wkf_id, draft_contract_ids)
-        self._ins_wkf_items('act_active', wkf_id, active_contract_ids)
-        self._ins_wkf_items(
-            'act_sub_waiting', wkf_id, sub_waiting_contract_ids)
-        self._ins_wkf_items('act_sub', wkf_id, sub_contract_ids)
-
-    def _ins_wkf_items(self, act_id, wkf_id, cont_ids):
-        if cont_ids:
-            cr = self.env.cr
-            ir_model_data = self.env['ir.model.data']
-            wkf_activity_id = ir_model_data.get_object_reference(
-                'sponsorship_tracking', act_id)[1]
-
-            wkf_instance_ids = list()
-            con_ids_string = ','.join([str(c) for c in cont_ids])
-            cr.execute(
-                "UPDATE wkf_instance SET state='active' "
-                "WHERE wkf_id = {0} and res_id in ({1})".format(
-                    wkf_id, con_ids_string))
-            cr.execute(
-                "SELECT id FROM wkf_instance "
-                "WHERE wkf_id = {0} AND res_id in ({1})".format(
-                    wkf_id, con_ids_string))
-            res = cr.fetchall()
-            if res:
-                for row in res:
-                    wkf_instance_ids.append(row[0])
-
-            for wkf_instance_id in wkf_instance_ids:
-                cr.execute(
-                    "INSERT INTO wkf_workitem(act_id, inst_id, state) "
-                    "VALUES ('{0}', '{1}', 'complete')".format(
-                        wkf_activity_id, wkf_instance_id))
+    _description = "Install SDS Tracking"
 
     # Only at module installation
     @api.model
@@ -89,43 +41,51 @@ class recurring_contract(models.TransientModel):
             6. Contracts child departed -> no_sub, sub_accept or sub_reject
                See Method _get_contract_sub for more details.
         """
-        contract_obj = self.env['recurring.contract']
+        contract_obj = self.env["recurring.contract"]
+        depart = self.env.ref("sponsorship_compassion.end_reason_depart")
         waiting_contract_ids = contract_obj.search(
-            [('state', 'in', ['waiting', 'mandate'])]).ids
-        active_contract_ids = contract_obj.search(
-            [('state', '=', 'active')]).ids
-        draft_contract_ids = contract_obj.search(
-            [('state', '=', 'draft')]).ids
-        cancelled_contract_ids = contract_obj.search(
-            [('state', '=', 'cancelled')]).ids
+            [("state", "in", ["waiting", "mandate"])]
+        ).ids
+        active_contract_ids = contract_obj.search([("state", "=", "active")]).ids
+        draft_contract_ids = contract_obj.search([("state", "=", "draft")]).ids
+        cancelled_contract_ids = contract_obj.search([("state", "=", "cancelled")]).ids
         terminated_contract_ids = contract_obj.search(
-            [('state', '=', 'terminated'), ('end_reason', '!=', '1')]).ids
-        no_sub_ids, sub_ids, sub_accept_ids, sub_reject_ids, \
-            sub_waiting_ids = self._get_contract_sub()
+            [("state", "=", "terminated"), ("end_reason_id", "!=", depart.id)]
+        ).ids
+        (
+            no_sub_ids,
+            sub_ids,
+            sub_accept_ids,
+            sub_reject_ids,
+            sub_waiting_ids,
+        ) = self._get_contract_sub()
 
-        self._set_sds_state(draft_contract_ids, 'draft', 'start_date')
-        self._set_sds_state(waiting_contract_ids, 'active', 'start_date')
-        self._set_sds_state(active_contract_ids, 'active', 'activation_date')
-        self._set_sds_state(cancelled_contract_ids, 'cancelled', 'end_date')
-        self._set_sds_state(terminated_contract_ids, 'cancelled', 'end_date')
-        self._set_sds_state(no_sub_ids, 'no_sub', 'end_date')
-        self._set_sds_state(sub_ids, 'sub', 'end_date')
-        self._set_sds_state(sub_waiting_ids, 'sub_waiting', 'end_date')
-        self._set_sds_state(sub_accept_ids, 'sub_accept', 'end_date', 50)
-        self._set_sds_state(sub_reject_ids, 'sub_reject', 'end_date', 50)
+        self._set_sds_state(draft_contract_ids, "draft", "start_date")
+        self._set_sds_state(waiting_contract_ids, "active", "start_date")
+        self._set_sds_state(active_contract_ids, "active", "activation_date")
+        self._set_sds_state(cancelled_contract_ids, "cancelled", "end_date")
+        self._set_sds_state(terminated_contract_ids, "cancelled", "end_date")
+        self._set_sds_state(no_sub_ids, "no_sub", "end_date")
+        self._set_sds_state(sub_ids, "sub", "end_date")
+        self._set_sds_state(sub_waiting_ids, "sub_waiting", "end_date")
+        self._set_sds_state(sub_accept_ids, "sub_accept", "end_date", 50)
+        self._set_sds_state(sub_reject_ids, "sub_reject", "end_date", 50)
 
-    def _set_sds_state(self, contract_ids, sds_state, sds_change_date,
-                       date_delta=0):
+    def _set_sds_state(self, contract_ids, sds_state, sds_change_date, date_delta=0):
         if contract_ids:
-            con_ids = ','.join([str(c) for c in contract_ids])
-            self.env.cr.execute("""
+            # correct according to
+            # http://initd.org/psycopg/docs/usage.html#passing-parameters-to-sql-queries
+            # pylint:disable=E8103
+            query = sql.SQL(
+                f"""
                 UPDATE recurring_contract
-                SET sds_state = '{0}',
-                    sds_state_date = {1} + interval '{2} days',
-                    color = {3}
-                WHERE id in ({4})
-            """.format(sds_state, sds_change_date,
-                       date_delta, SDS_COLORS[sds_state], con_ids))
+                SET sds_state = '{sds_state}',
+                sds_state_date = {sql.Identifier(sds_change_date).string}
+                + interval '{date_delta} days',
+                    color = {SDS_COLORS[sds_state]}
+                WHERE id in ({(', '.join(str(id) for id in contract_ids))})"""
+            )
+            self.env.cr.execute(query)
 
     def _get_contract_sub(self):
         """ Rules for setting SUB Status of a contract with child departed:
@@ -136,11 +96,16 @@ class recurring_contract(models.TransientModel):
                -> sub_accept
             4. If no other condition above is met -> sub_reject
         """
-        contract_obj = self.env['recurring.contract']
+        contract_obj = self.env["recurring.contract"]
+        depart = self.env.ref("sponsorship_compassion.end_reason_depart")
         max_sub_waiting = datetime.today() + timedelta(days=-50)
         child_departed_contracts = contract_obj.search(
-            [('state', '=', 'terminated'), ('end_reason', '=', '1'),
-             ('end_date', '!=', False)])
+            [
+                ("state", "=", "terminated"),
+                ("end_reason_id", "=", depart.id),
+                ("end_date", "!=", False),
+            ]
+        )
 
         no_sub_ids = list()
         sub_ids = list()
@@ -148,10 +113,11 @@ class recurring_contract(models.TransientModel):
         sub_accept_ids = list()
         sub_reject_ids = list()
 
+        depart = self.env.ref("sponsorship_compassion.end_reason_depart")
+
         for contract in child_departed_contracts:
-            sub_contracts = contract_obj.search(
-                [('parent_id', '=', contract.id)])
-            contract_end_date = fields.Datetime.from_string(contract.end_date)
+            sub_contracts = contract_obj.search([("parent_id", "=", contract.id)])
+            contract_end_date = contract.end_date
 
             if not sub_contracts:
                 if contract_end_date < max_sub_waiting:
@@ -160,19 +126,17 @@ class recurring_contract(models.TransientModel):
                     sub_waiting_ids.append(contract.id)
             else:
                 for sub_contract in sub_contracts:
-                    if (sub_contract.state == 'active'):
+                    if sub_contract.state == "active":
                         sub_accept_ids.append(contract.id)
                         break
                     elif sub_contract.end_date:
-                        sub_end_date = fields.Datetime.from_string(
-                            sub_contract.end_date)
-                        sub_start_date = fields.Datetime.from_string(
-                            sub_contract.start_date)
-                        if (sub_contract.end_reason == '1' or
-                            sub_end_date >
-                                sub_start_date + timedelta(days=50)):
-                            sub_accept_ids.append(
-                                contract.id)
+                        sub_end_date = sub_contract.end_date
+                        sub_start_date = sub_contract.start_date
+                        if (
+                                sub_contract.end_reason_id == depart
+                                or sub_end_date > sub_start_date + timedelta(days=50)
+                        ):
+                            sub_accept_ids.append(contract.id)
                             break
                     else:
                         sub_ids.append(contract.id)
@@ -180,5 +144,4 @@ class recurring_contract(models.TransientModel):
                 else:
                     sub_reject_ids.append(contract.id)
 
-        return no_sub_ids, sub_ids, sub_accept_ids, sub_reject_ids, \
-            sub_waiting_ids
+        return no_sub_ids, sub_ids, sub_accept_ids, sub_reject_ids, sub_waiting_ids

@@ -9,7 +9,6 @@ __pycache__/
 .Python
 env/
 bin/
-build/
 develop-eggs/
 dist/
 eggs/
@@ -54,3 +53,9 @@ docs/_build/
 
 # Unported modules
 __unported__
+
+# React webapp
+sms_sponsorship/webapp/node_modules
+sms_sponsorship/webapp/build
+sms_sponsorship/webapp/.idea
+/sbc_compassion/FPDF/.idea/

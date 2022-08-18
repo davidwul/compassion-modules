@@ -1,11 +1,10 @@
-<openerp>
-    <data>
+<odoo>
+    <data noupdate="1">
         <!-- Hold Message Creation -->
         <record id="create_hold" model="gmc.action">
             <field name="direction">out</field>
             <field name="name">CreateHold</field>
-            <field name="mapping_name">create_hold</field>
-            <field name="model">compassion.hold</field>
+            <field name="mapping_id" ref="mapping_hold_create"/>
             <field name="description">This will send a new Hold to GMC.</field>
             <field name="connect_service">beneficiaries/holds</field>
             <field name="connect_outgoing_wrapper">BeneficiaryHoldRequestList</field>
@@ -18,8 +17,7 @@
         <record id="release_hold" model="gmc.action">
             <field name="direction">out</field>
             <field name="name">ReleaseHold</field>
-            <field name="mapping_name">release_hold</field>
-            <field name="model">compassion.hold</field>
+            <field name="mapping_id" ref="mapping_hold_release"/>
             <field name="description">This will release a Hold on GMC.</field>
             <field name="connect_service">beneficiaries/holds/release</field>
             <field name="connect_outgoing_wrapper">BeneficiaryHoldReleaseRequestList</field>
@@ -32,23 +30,23 @@
         <record id="beneficiaries_details" model="gmc.action">
             <field name="direction">out</field>
             <field name="name">BeneficiariesDetails</field>
-            <field name="mapping_name">GetDetails</field>
-            <field name="model">compassion.child</field>
+            <field name="mapping_id" ref="mapping_child"/>
             <field name="connect_answer_wrapper">BeneficiaryResponseList</field>
             <field name="description">This will update child</field>
             <field name="connect_service">beneficiaries/${object.global_id}/details</field>
             <field name="request_type">GET</field>
             <field name="auto_process">1</field>
             <field name="success_method">details_answer</field>
+            <field name="no_outgoing_data" eval="True"/>
         </record>
         <!-- Get ICP details -->
         <record id="icp_details" model="gmc.action">
             <field name="direction">out</field>
             <field name="name">ICPDetails</field>
-            <field name="model">compassion.project</field>
+            <field name="mapping_id" ref="mapping_fcp"/>
             <field name="connect_answer_wrapper">ICPResponseList</field>
             <field name="description">This will update the project</field>
-            <field name="connect_service">churchpartners/${object.icp_id}/kits/icpkit</field>
+            <field name="connect_service">churchpartners/${object.fcp_id}/kits/icpkit</field>
             <field name="request_type">GET</field>
             <field name="auto_process">1</field>
             <field name="success_method">details_answer</field>
@@ -56,7 +54,7 @@
         <record id="field_office_details" model="gmc.action">
             <field name="direction">out</field>
             <field name="name">FieldOfficeDetails</field>
-            <field name="model">compassion.field.office</field>
+            <field name="mapping_id" ref="mapping_field_office"/>
             <field name="connect_answer_wrapper">FieldOfficeResponseList</field>
             <field name="description">This will update the Field Office</field>
             <field name="connect_service">fieldoffices/${object.field_office_id}/kits/fieldofficekit</field>
@@ -66,59 +64,62 @@
         <!-- Reservation Message Creation -->
         <record id="create_reservation" model="gmc.action">
             <field name="direction">out</field>
-            <field name="name">CreateReservation</field>
-            <field name="mapping_name">create_reservation</field>
+            <field name="name">IcpCreateReservation</field>
+            <field name="mapping_id" ref="mapping_reservation"/>
             <field name="model">compassion.reservation</field>
-            <field name="description">This will send a new Reservation to GMC.</field>
+            <field name="description">This will send a new project Reservation to GMC.</field>
             <field name="connect_service">churchpartners/reservations</field>
             <field name="connect_outgoing_wrapper">GlobalPartnerReservationRequestList</field>
             <field name="connect_answer_wrapper">GlobalPartnerReservationResponseList</field>
             <field name="request_type">POST</field>
             <field name="batch_send">1</field>
+            <field name="success_method">reservation_create_answer</field>
+            <field name="failure_method">reservation_create_answer_fail</field>
         </record>
         <!-- Reservation Message Creation for Beneficiary -->
         <record id="beneficiary_reservation" model="gmc.action">
             <field name="direction">out</field>
             <field name="name">CreateBeneficiaryReservation</field>
-            <field name="mapping_name">beneficiary_reservation</field>
-            <field name="model">compassion.reservation</field>
+            <field name="mapping_id" ref="mapping_reservation_child"/>
             <field name="description">This will send a new Beneficiary Reservation to GMC.</field>
             <field name="connect_service">beneficiaries/reservations</field>
             <field name="connect_outgoing_wrapper">GlobalPartnerReservationRequestList</field>
             <field name="connect_answer_wrapper">GlobalPartnerReservationResponseList</field>
             <field name="request_type">POST</field>
             <field name="batch_send">1</field>
+            <field name="success_method">reservation_create_answer</field>
+            <field name="failure_method">reservation_create_answer_fail</field>
         </record>
         <!-- Reservation Message Release -->
         <record id="cancel_reservation" model="gmc.action">
             <field name="direction">out</field>
             <field name="name">CancelReservation</field>
-            <field name="mapping_name">cancel_reservation</field>
-            <field name="model">compassion.reservation</field>
+            <field name="mapping_id" ref="mapping_reservation_cancel"/>
             <field name="description">This will send a reservation cancelling request to GMC.</field>
             <field name="connect_service">churchpartners/reservations/cancellations</field>
             <field name="connect_outgoing_wrapper">ReservationCancelRequestList</field>
             <field name="connect_answer_wrapper">ReservationCancelResponseList</field>
             <field name="request_type">POST</field>
             <field name="batch_send">1</field>
+            <field name="success_method">reservation_cancel_answer</field>
         </record>
         <record id="cancel_reservation_child" model="gmc.action">
             <field name="direction">out</field>
             <field name="name">CancelBeneficiaryReservation</field>
-            <field name="mapping_name">cancel_reservation</field>
-            <field name="model">compassion.reservation</field>
+            <field name="mapping_id" ref="mapping_reservation_cancel"/>
             <field name="description">This will send a Beneficiary reservation cancelling request to GMC.</field>
             <field name="connect_service">beneficiaries/reservations/cancellations</field>
             <field name="connect_outgoing_wrapper">ReservationCancelRequestList</field>
             <field name="connect_answer_wrapper">ReservationCancelResponseList</field>
             <field name="request_type">POST</field>
             <field name="batch_send">1</field>
+            <field name="success_method">reservation_cancel_answer</field>
         </record>
         <!-- Beneficiary Major Revision -->
         <record id="major_revision" model="gmc.action">
             <field name="direction">in</field>
             <field name="name">BeneficiaryMajorRevision</field>
-            <field name="model">compassion.child</field>
+            <field name="mapping_id" ref="mapping_child"/>
             <field name="incoming_method">major_revision</field>
             <field name="description">This will update the child with the major changes that happened.</field>
             <field name="auto_process">1</field>
@@ -126,16 +127,25 @@
         <record id="beneficiary_kit" model="gmc.action">
             <field name="direction">in</field>
             <field name="name">BeneficiaryKit</field>
-            <field name="model">compassion.child</field>
+            <field name="mapping_id" ref="mapping_child"/>
             <field name="incoming_method">new_kit</field>
             <field name="description">This will update the child with the fresh information.</field>
+            <field name="auto_process">1</field>
+        </record>
+        <!-- ICP Kit -->
+        <record id="icp_kit" model="gmc.action">
+            <field name="direction">in</field>
+            <field name="name">ICPKit</field>
+            <field name="mapping_id" ref="mapping_fcp"/>
+            <field name="incoming_method">new_kit</field>
+            <field name="description">This will update the project with the fresh information.</field>
             <field name="auto_process">1</field>
         </record>
         <!-- Beneficiary CDPR Messages -->
         <record id="beneficiary_cdpr" model="gmc.action">
             <field name="direction">in</field>
             <field name="name">BeneficiaryCDPR</field>
-            <field name="model">compassion.child.cdpr</field>
+            <field name="mapping_id" ref="mapping_child_cdpr"/>
             <field name="description">This handles the reception of a Beneficiary CDPR.</field>
             <field name="auto_process">1</field>
         </record>
@@ -143,9 +153,8 @@
         <record id="reservation_to_hold" model="gmc.action">
             <field name="direction">in</field>
             <field name="name">ReservationToHold</field>
-            <field name="mapping_name">reservation_to_hold</field>
+            <field name="mapping_id" ref="mapping_hold_create"/>
             <field name="incoming_method">reservation_to_hold</field>
-            <field name="model">compassion.hold</field>
             <field name="description">This handles the reception of a reserved Beneficiary.</field>
             <field name="auto_process">1</field>
         </record>
@@ -153,15 +162,16 @@
         <record id="major_revision_household" model="gmc.action">
             <field name="direction">in</field>
             <field name="name">HouseholdMajorRevision</field>
-            <field name="model">compassion.household</field>
+            <field name="mapping_id" ref="mapping_household"/>
             <field name="description">This will update the household with the major changes that happened.</field>
+            <field name="incoming_method">process_commkit</field>
             <field name="auto_process">1</field>
         </record>
         <!-- Beneficiary Note -->
         <record id="beneficiary_note" model="gmc.action">
             <field name="direction">in</field>
             <field name="name">BeneficiaryNote</field>
-            <field name="model">compassion.child.note</field>
+            <field name="mapping_id" ref="mapping_child_note"/>
             <field name="description">This handles the reception of a Beneficiary note.</field>
             <field name="auto_process">1</field>
         </record>
@@ -169,7 +179,7 @@
         <record id="new_life_cycle" model="gmc.action">
             <field name="direction">in</field>
             <field name="name">ChildLifeCycle</field>
-            <field name="model">compassion.child.ble</field>
+            <field name="mapping_id" ref="mapping_child_lifecycle"/>
             <field name="description">This will create a new life cycle event.</field>
             <field name="auto_process">1</field>
         </record>
@@ -177,7 +187,7 @@
         <record id="new_project_cycle" model="gmc.action">
             <field name="direction">in</field>
             <field name="name">NewProjectCycle</field>
-            <field name="model">compassion.project.ile</field>
+            <field name="mapping_id" ref="mapping_project_lifecycle"/>
             <field name="description">This will create a new project cycle event.</field>
             <field name="auto_process">1</field>
         </record>
@@ -185,28 +195,56 @@
         <record id="new_reinstatement_notification" model="gmc.action">
             <field name="direction">in</field>
             <field name="name">NewReinstatementNotification</field>
-            <field name="mapping_name">new_reinstatement_notification</field>
+            <field name="mapping_id" ref="mapping_hold_create"/>
             <field name="incoming_method">reinstatement_notification</field>
-            <field name="model">compassion.hold</field>
             <field name="description">This will create a new reinstatement notification.</field>
             <field name="auto_process">1</field>
         </record>
-        <!-- Field Office Disaster Message -->
+        <!-- Deprecated ! Field Office Disaster Message -->
         <record id="field_office_disaster" model="gmc.action">
             <field name="direction">in</field>
             <field name="name">FieldOfficeDisaster</field>
-            <field name="model">fo.disaster.alert</field>
+            <field name="mapping_id" ref="mapping_fo_disaster"/>
+            <field name="description">Deprecated ! This handles the reception of a Field Office Disaster.</field>
+            <field name="auto_process">1</field>
+        </record>
+        <!-- Field Office Disaster Notification -->
+        <record id="field_office_disaster_notif" model="gmc.action">
+            <field name="direction">in</field>
+            <field name="name">FieldOfficeDisasterNotification</field>
+            <field name="mapping_id" ref="mapping_fo_disaster_notif"/>
+            <field name="description">This is called by GMC when a new disaster or an update occur.</field>
+            <field name="auto_process">1</field>
+        </record>
+        <!-- Field Office Disaster Message -->
+        <record id="field_office_disaster_detail" model="gmc.action">
+            <field name="direction">out</field>
+            <field name="name">FieldOfficeDisasterDetail</field>
+            <field name="mapping_id" ref="mapping_fo_disaster"/>
             <field name="description">This handles the reception of a Field Office Disaster.</field>
+            <field name="connect_service">disaster-communication-update/v1/${object.disaster_communication_update_name}</field>
+            <field name="request_type">GET</field>
             <field name="auto_process">1</field>
         </record>
         <!--Beneficiary Hold Removal-->
         <record id="beneficiary_hold_removal" model="gmc.action">
             <field name="direction">in</field>
             <field name="name">BeneficiaryHoldRemoval</field>
-            <field name="model">compassion.hold</field>
+            <field name="mapping_id" ref="mapping_hold_release"/>
             <field name="incoming_method">beneficiary_hold_removal</field>
             <field name="description">This handles the reception of a Beneficiary Hold Removal.</field>
             <field name="auto_process">1</field>
+        </record>
+        <!-- Weekly Planning Message Creation -->
+        <record id="create_demand_planning" model="gmc.action">
+            <field name="direction">out</field>
+            <field name="name">DemandPlanning</field>
+            <field name="mapping_id" ref="mapping_demand_planning"/>
+            <field name="description">This will send a new set of Weekly Plannings to GMC.</field>
+            <field name="connect_service">globalpartners/demandplanning</field>
+            <field name="connect_answer_wrapper">GlobalPartnerWeeklyDemandResponseDetails</field>
+            <field name="request_type">POST</field>
+            <field name="auto_process">False</field>
         </record>
 
         <!-- Actions to Connect mappings -->
@@ -217,6 +255,10 @@
         <record id="beneficiary_kit_connect" model="gmc.action.connect">
             <field name="connect_schema">http://schemas.ci.org/ci/messages/beneficiaries/2016/04/BeneficiaryKit</field>
             <field name="action_id" ref="beneficiary_kit"/>
+        </record>
+        <record id="icp_kit_connect" model="gmc.action.connect">
+            <field name="connect_schema">http://schemas.ci.org/ci/messages/churchpartners/2016/04/ICPKit</field>
+            <field name="action_id" ref="icp_kit"/>
         </record>
         <record id="beneficiary_cdpr_connect" model="gmc.action.connect">
             <field name="connect_schema">http://schemas.ci.org/ci/messages/beneficiaries/2016/04/CDPRAssessmentKit</field>
@@ -231,7 +273,8 @@
             <field name="action_id" ref="major_revision_household"/>
         </record>
         <record id="new_life_cycle_connect" model="gmc.action.connect">
-            <field name="connect_schema">http://schemas.ci.org/ci/messages/beneficiaries/2016/04/BeneficiaryLifecycleEventKit</field>
+            <field name="connect_schema">
+                http://schemas.ci.org/ci/messages/beneficiaries/2016/04/BeneficiaryLifecycleEventKit</field>
             <field name="action_id" ref="new_life_cycle"/>
         </record>
         <record id="beneficiary_note_connect" model="gmc.action.connect">
@@ -248,15 +291,21 @@
         </record>
         <record id="field_office_disaster_connect" model="gmc.action.connect">
             <field name="connect_schema">http://schemas.ci.org/ci/messages/beneficiaries/2016/04/DisasterKit</field>
-            <field name="action_id" ref="field_office_disaster"/>
+            <field name="action_id" ref="field_office_disaster_notif"/>
         </record>
         <record id="field_office_disaster_connect_2" model="gmc.action.connect">
             <field name="connect_schema">http://schemas.ci.org/ci/messages/fieldoffices/2016/04/DisasterKit</field>
-            <field name="action_id" ref="field_office_disaster"/>
+            <field name="action_id" ref="field_office_disaster_notif"/>
         </record>
+        <record id="field_office_disaster_connect_3" model="gmc.action.connect">
+            <field name="connect_schema">http://schemas.ci.org/ci/messages/fieldoffices/2020/12/DisasterNotification</field>
+            <field name="action_id" ref="field_office_disaster_notif"/>
+        </record>
+
         <record id="beneficiary_hold_removal_connect" model="gmc.action.connect">
-            <field name="connect_schema">http://schemas.ci.org/ci/messaging/availability/2016/04/BeneficiaryHoldRemovalNotification</field>
+            <field name="connect_schema">http://schemas.ci.org/ci/messaging/availability/2016/04/BeneficiaryHoldRemovalNotification
+            </field>
             <field name="action_id" ref="beneficiary_hold_removal"/>
         </record>
     </data>
-</openerp>
+</odoo>

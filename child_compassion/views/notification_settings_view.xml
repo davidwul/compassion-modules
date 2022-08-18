@@ -2,36 +2,21 @@
 <!--
     Copyright (C) 2016 Compassion (http://www.compassion.ch)
     @author Emanuel Cino <ecino@compassion.ch>
-    The licence is in the file __openerp__.py
+    The licence is in the file __manifest__.py
 -->
-<openerp>
-    <data>
-        <!-- Configuration View -->
-        <record id="view_notification_settings_form" model="ir.ui.view">
-            <field name="name">staff.notification.settings.form</field>
-            <field name="model">staff.notification.settings</field>
-            <field name="arch" type="xml">
-                <form class="oe_form_configuration">
-                    <header>
-                        <button string="Apply" type="object" name="execute" class="oe_highlight"/>
-                        or
-                        <button string="Cancel" type="object" name="cancel" class="oe_link"/>
-                    </header>
-                    <group>
-                        <field name="disaster_notify_ids" widget="many2many_tags"/>
-                    </group>
-                </form>
-            </field>
-        </record>
-
-        <record id="open_view_notification_config" model="ir.actions.act_window">
-            <field name="name">Notification Configuration</field>
-            <field name="res_model">staff.notification.settings</field>
-            <field name="view_type">form</field>
-            <field name="view_mode">form</field>
-            <field name="target">inline</field>
-        </record>
-
-        <menuitem id="menu_notification_configuration" name="Staff Notifications" parent="menu_communication_config" action="open_view_notification_config"/>
-    </data>
-</openerp>
+<odoo>
+    <record id="notification_settings" model="ir.ui.view">
+        <field name="name">staff.notification.settings.form</field>
+        <field name="model">res.config.settings</field>
+        <field name="priority" eval="100"/>
+        <field name="inherit_id" ref="message_center_compassion.notification_settings"/>
+        <field name="arch" type="xml">
+            <xpath expr="//div[@name='compassion_settings']//div[@name='notification_configuration']//div[@name='left_group']">
+                <div name="disaster_alert">
+                    <label for="disaster_notify_ids" class="o_light_label"/>
+                    <field name="disaster_notify_ids" widget="many2many_tags"/>
+                </div>
+            </xpath>
+        </field>
+    </record>
+</odoo>
