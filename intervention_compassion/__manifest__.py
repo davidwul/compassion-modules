@@ -54,6 +54,7 @@
         "views/global_intervention_view.xml",
         "views/intervention_search_view.xml",
         "views/project_view.xml",
+        "views/server_action.xml",
     ],
     "demo": [],
     "installable": True,

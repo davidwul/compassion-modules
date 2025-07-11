@@ -464,7 +464,7 @@
     <record id="open_categories_action" model="ir.actions.act_window">
         <field name="name">Intervention Categories</field>
         <field name="res_model">compassion.intervention.category</field>
-        <field name="view_mode">tree,form</field>
+        <field name="view_mode">tree,form,kanban</field>
     </record>
     <record id="open_subcategories_action" model="ir.actions.act_window">
         <field name="name">Intervention Subcategories</field>

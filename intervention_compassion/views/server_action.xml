@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<odoo>
+<record id="action_create_analytic_account" model="ir.actions.server">
+    <field name="name">Create analytic account</field>
+    <field name="model_id" ref="model_compassion_intervention"/>
+    <field name="state">code</field>
+    <field name="code">
+for r in records:
+  #search fund in group_id
+  group_id=env["account.analytic.group"].search([("name","=",r.category_id.fund)],limit=1)
+  if len(group_id) ==0:
+    group_id=env["account.analytic.group"].create({"name":r.category_id.fund})
+  ref= r.parent_intervention_name if r.parent_intervention_name else r.intervention_id
+  name = r.field_office_id.field_office_id +"-"+ (r.parent_intervention_name if r.parent_intervention_name else r.name)
+  ana_id=env["account.analytic.account"].search([("name","=",name)],limit=1)
+  if len(ana_id) ==0:
+    ana_id=env["account.analytic.account"].create({"name":name,"code":ref,"group_id":group_id.id})
+  r.write({"analytic_account_id":ana_id.id})
+    </field>
+</record>
+</odoo>
